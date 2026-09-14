@@ -103,7 +103,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useOrderStore } from '../../stores/orderStore';
 import TaxiMap from '../TaxiMap.vue';
 

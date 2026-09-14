@@ -12,7 +12,7 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useOrderStore } from '../../stores/orderStore';
 
 const orderStore = useOrderStore();

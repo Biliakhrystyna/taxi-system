@@ -37,7 +37,7 @@
     <WeatherWarningModal />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted } from 'vue';
 import { useAuthStore } from './stores/authStore';
 import { useOrderStore } from './stores/orderStore';
