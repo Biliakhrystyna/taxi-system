@@ -3,10 +3,10 @@
     <h2>Вітаємо у системі таксі! Хто ви?</h2>
     <p class="subtitle">Будь ласка, оберіть вашу роль для входу в систему:</p>
     <div class="btn-group-row">
-      <button class="btn passenger-btn-big" @click="orderStore.userRole = 'passenger'; orderStore.authState = 'auth_form'">
+      <button class="btn passenger-btn-big" @click="authStore.userRole = 'passenger'; authStore.authState = 'auth_form'">
         🙋‍♀️ Я Пасажир
       </button>
-      <button class="btn driver-btn-big" @click="orderStore.userRole = 'driver'; orderStore.authState = 'auth_form'">
+      <button class="btn driver-btn-big" @click="authStore.userRole = 'driver'; authStore.authState = 'auth_form'">
         🚖 Я Водій
       </button>
     </div>
@@ -14,7 +14,7 @@
 </template>
 
 <script setup>
-import { useOrderStore } from '../../stores/orderStore';
+import { useAuthStore } from '../../stores/authStore';
 
-const orderStore = useOrderStore();
+const authStore = useAuthStore();
 </script>

@@ -1,34 +1,34 @@
 <template>
   <div class="app-container">
-    <div v-if="orderStore.showSuccessAlert" class="global-alert">
-      🎉 {{ orderStore.showSuccessAlert }}
+    <div v-if="uiStore.showSuccessAlert" class="global-alert">
+      🎉 {{ uiStore.showSuccessAlert }}
     </div>
 
     <header class="app-header">
       <h1>🚖 Система таксі перевезень </h1>
       <p>Розробник: Біляк Христина (Група ОІ-32)</p>
-      <button v-if="orderStore.authState === 'main_app'" class="btn logout-btn" @click="orderStore.logout">🚪 Вийти з акаунту</button>
+      <button v-if="authStore.authState === 'main_app'" class="btn logout-btn" @click="authStore.logout">🚪 Вийти з акаунту</button>
     </header>
 
-    <RoleSelector v-if="orderStore.authState === 'role_selection'" />
+    <RoleSelector v-if="authStore.authState === 'role_selection'" />
 
-    <AuthForm v-if="orderStore.authState === 'auth_form'" />
+    <AuthForm v-if="authStore.authState === 'auth_form'" />
 
-    <DriverVerification v-if="orderStore.authState === 'verified_check'" />
+    <DriverVerification v-if="authStore.authState === 'verified_check'" />
 
-    <div v-if="orderStore.authState === 'main_app'">
+    <div v-if="authStore.authState === 'main_app'">
 
       <WeatherControls />
 
       <div class="user-profile-banner">
-        <span>👤 Користувач: <strong>{{ orderStore.currentUser.first_name }} {{ orderStore.currentUser.last_name }}</strong></span>
+        <span>👤 Користувач: <strong>{{ authStore.currentUser.first_name }} {{ authStore.currentUser.last_name }}</strong></span>
         <span class="counter-badge">📊 Ваш особистий лічильник поїздок в базі: <strong>{{ orderStore.totalTripsCounter }}</strong></span>
       </div>
 
       <div class="main-grid">
-        <PassengerDashboard v-if="orderStore.currentUser && orderStore.currentUser.role === 'passenger'" />
+        <PassengerDashboard v-if="authStore.currentUser && authStore.currentUser.role === 'passenger'" />
 
-        <DriverDashboard v-if="orderStore.currentUser.role === 'driver'" />
+        <DriverDashboard v-if="authStore.currentUser.role === 'driver'" />
 
         <TripHistoryTable />
       </div>
@@ -39,7 +39,9 @@
 
 <script setup>
 import { onMounted } from 'vue';
+import { useAuthStore } from './stores/authStore';
 import { useOrderStore } from './stores/orderStore';
+import { useUiStore } from './stores/uiStore';
 import RoleSelector from './components/auth/RoleSelector.vue';
 import AuthForm from './components/auth/AuthForm.vue';
 import DriverVerification from './components/auth/DriverVerification.vue';
@@ -49,7 +51,9 @@ import PassengerDashboard from './components/passenger/PassengerDashboard.vue';
 import DriverDashboard from './components/driver/DriverDashboard.vue';
 import TripHistoryTable from './components/history/TripHistoryTable.vue';
 
+const authStore = useAuthStore();
 const orderStore = useOrderStore();
+const uiStore = useUiStore();
 
 onMounted(() => {
   // Якщо є збережені стани, можемо ініціалізувати
