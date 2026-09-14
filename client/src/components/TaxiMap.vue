@@ -5,7 +5,7 @@
       💡 <span v-if="role === 'passenger'">Клікніть на мапі: 1-й клік — Точка А, 2-й клік — Точка В</span>
       <span v-else>Предиктивний ШІ-моніторинг дефіциту автомобілів</span>
     </div>
-    
+
     <div v-if="role === 'driver'" class="ai-legend">
       <h4>🔥 ШІ: Теплова карта попиту</h4>
       <div class="legend-scale">
@@ -16,113 +16,93 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useOrderStore } from '../stores/orderStore';
+import type { DemandZoneCircle, LatLng } from '../types/geo';
+import { generateOutskirtsZones } from './map/geo/zonePreprocessor';
+import { isPointInAnyZone, filterZonesWithinBounds } from './map/geo/geoFilter';
+import { buildDirectRoute, buildSimulatedSafeRoute } from './map/geo/routeBuilder';
 
-const props = defineProps({
-  role: String,
-  isBadWeather: Boolean
-});
+const props = defineProps<{
+  role: 'passenger' | 'driver';
+  isBadWeather: boolean;
+}>();
 
 const orderStore = useOrderStore();
 
-let map = null;
-let markerA = null;
-let markerB = null;
-let routeLine = null; 
-let heatCircles = [];
-const LVIV_CENTER = [49.8419, 24.0315];
-let aiGeneratedDeficitZones = [];
+let map: L.Map | null = null;
+let markerA: L.Marker | null = null;
+let markerB: L.Marker | null = null;
+let routeLine: L.Polyline | null = null;
+let heatCircles: L.Circle[] = [];
+const LVIV_CENTER: LatLng = { lat: 49.8419, lng: 24.0315 };
+let aiGeneratedDeficitZones: DemandZoneCircle[] = [];
 
-// 1. Генератор випадкових зон
-const generateRandomOutskirtsZones = (centerLat, centerLng, count = 3) => {
-  const zones = [];
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const distanceKm = 2.0 + Math.random() * 2.5;
-    const latOffset = (distanceKm / 111.32) * Math.sin(angle);
-    const lngOffset = (distanceKm / (111.32 * Math.cos(centerLat * Math.PI / 180))) * Math.cos(angle);
-    zones.push({
-      id: `ZONE_${Date.now()}_${i}`,
-      lat: centerLat + latOffset,
-      lng: centerLng + lngOffset,
-      radius: 1000 + Math.random() * 300
-    });
-  }
-  return zones;
-};
-
-// 2. Рендер зон 
 const renderAllZones = () => {
   if (!map) return;
-  heatCircles.forEach(circle => map.removeLayer(circle));
+  heatCircles.forEach((circle) => map!.removeLayer(circle));
   heatCircles = [];
-
 
   if (props.role === 'passenger') return;
 
-  // Зелені зони
-  [{ coords: [49.8419, 24.0315], rad: 800 }, { coords: [49.8350, 24.0150], rad: 600 }].forEach(cz => {
-    const gc = L.circle(cz.coords, { color: '#10b981', fillColor: '#34d399', fillOpacity: 0.1, radius: cz.rad, interactive: false }).addTo(map);
+  // Зелені (профіцитні) зони — статичні опорні точки демо-режиму.
+  [
+    { coords: [49.8419, 24.0315] as [number, number], rad: 800 },
+    { coords: [49.835, 24.015] as [number, number], rad: 600 },
+  ].forEach((cz) => {
+    const gc = L.circle(cz.coords, { color: '#10b981', fillColor: '#34d399', fillOpacity: 0.1, radius: cz.rad, interactive: false }).addTo(map!);
     heatCircles.push(gc);
   });
 
-  // Червоні зони дефіциту
-  aiGeneratedDeficitZones.forEach((zone) => {
+  // Червоні зони дефіциту — препроцесинг (фільтр за видимою областю карти) перед рендером.
+  const visibleBounds = map.getBounds();
+  const zonesToRender = filterZonesWithinBounds(aiGeneratedDeficitZones, {
+    north: visibleBounds.getNorth(),
+    south: visibleBounds.getSouth(),
+    east: visibleBounds.getEast(),
+    west: visibleBounds.getWest(),
+  });
+
+  zonesToRender.forEach((zone) => {
     const rc = L.circle([zone.lat, zone.lng], {
       color: '#ef4444',
       fillColor: '#f87171',
       fillOpacity: orderStore.isBadWeather ? 0.5 : 0.25,
       radius: zone.radius,
-      interactive: false
-    }).addTo(map);
+      interactive: false,
+    }).addTo(map!);
     heatCircles.push(rc);
   });
 };
 
-// 3. Універсальна функція малювання ліній (для пасажира і водія)
-const drawRoute = (latA, lngA, latB, lngB, isSafeApplied) => {
+// Універсальна функція малювання лінії маршруту (для пасажира і водія)
+const drawRoute = (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
   if (!map) return;
   if (routeLine) map.removeLayer(routeLine);
 
-  const posA = [latA, lngA];
-  const posB = [latB, lngB];
-
   if (isSafeApplied && orderStore.isBadWeather) {
-    const arcPoints = [];
-    const steps = 10; 
+    const points = buildSimulatedSafeRoute(a, b);
 
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      
-      // Лінійна інтерполяція (пряма лінія між А та В)
-      const lat = latA + (latB - latA) * t;
-      const lng = lngA + (lngB - lngA) * t;
-      const wave = Math.sin(t * Math.PI) * 0.0035; 
-      
-      arcPoints.push([lat + wave, lng - wave]);
-    }
-
-    
-    routeLine = L.polyline(arcPoints, {
-      color: '#f97316', 
+    routeLine = L.polyline(points, {
+      color: '#f97316',
       weight: 5,
-      dashArray: '6, 6', 
-      opacity: 0.95
+      dashArray: '6, 6',
+      opacity: 0.95,
     }).addTo(map);
 
     if (markerB && props.role === 'passenger') {
       markerB.setPopupContent('🏁 Точка В<br><b style="color: #f97316;">🛡️ ШІ-маршрут: Оптимальний безпечний обхід</b>').openPopup();
     }
   } else {
-    // Стандартний найкоротший прямий шлях (синій колір)
-    routeLine = L.polyline([posA, posB], {
+    const points = buildDirectRoute(a, b);
+
+    routeLine = L.polyline(points, {
       color: '#38bdf8',
       weight: 4,
-      opacity: 0.8
+      opacity: 0.8,
     }).addTo(map);
 
     if (markerB && props.role === 'passenger') {
@@ -130,45 +110,40 @@ const drawRoute = (latA, lngA, latB, lngB, isSafeApplied) => {
     }
   }
 };
-   
 
 onMounted(() => {
-  map = L.map('map').setView(LVIV_CENTER, 12);
+  map = L.map('map').setView([LVIV_CENTER.lat, LVIV_CENTER.lng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
-  aiGeneratedDeficitZones = generateRandomOutskirtsZones(LVIV_CENTER[0], LVIV_CENTER[1], 3);
+  aiGeneratedDeficitZones = generateOutskirtsZones(LVIV_CENTER.lat, LVIV_CENTER.lng, 3);
   renderAllZones();
 
-  
   if (props.role === 'passenger') {
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
 
       if (!markerA) {
         // Перший клік — Точка А
-        markerA = L.marker([lat, lng]).addTo(map).bindPopup('📍 Точка А (Звідки)').openPopup();
+        markerA = L.marker([lat, lng]).addTo(map!).bindPopup('📍 Точка А (Звідки)').openPopup();
         orderStore.pickupLocation = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       } else if (!markerB) {
         // Другий клік — Точка В
-        markerB = L.marker([lat, lng]).addTo(map).bindPopup('🏁 Точка В (Куди)').openPopup();
+        markerB = L.marker([lat, lng]).addTo(map!).bindPopup('🏁 Точка В (Куди)').openPopup();
         orderStore.destinationLocation = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-        
-        // Перевірка на дефіцит через ШІ-геофенсинг
-        let insideDeficitZone = false;
-        for (let zone of aiGeneratedDeficitZones) {
-          const distance = map.distance([lat, lng], [zone.lat, zone.lng]);
-          if (distance <= zone.radius) { insideDeficitZone = true; break; }
-        }
+
+        // Фільтрація: чи потрапляє точка Б в зону підвищеного попиту (ШІ-геофенсинг)
+        const insideDeficitZone = isPointInAnyZone({ lat, lng }, aiGeneratedDeficitZones);
         orderStore.selectedZone = insideDeficitZone ? 'outskirts' : 'center';
-        
-        
-        drawRoute(markerA.getLatLng().lat, markerA.getLatLng().lng, lat, lng, orderStore.useSafeRoute);
+
+        drawRoute(markerA.getLatLng(), { lat, lng }, orderStore.useSafeRoute);
       } else {
         // Третій клік — повне скидання
-        if (markerA) map.removeLayer(markerA);
-        if (markerB) map.removeLayer(markerB);
-        if (routeLine) map.removeLayer(routeLine);
-        markerA = null; markerB = null; routeLine = null;
+        if (markerA) map!.removeLayer(markerA);
+        if (markerB) map!.removeLayer(markerB);
+        if (routeLine) map!.removeLayer(routeLine);
+        markerA = null;
+        markerB = null;
+        routeLine = null;
         orderStore.pickupLocation = '';
         orderStore.destinationLocation = '';
         orderStore.selectedZone = 'center';
@@ -177,48 +152,58 @@ onMounted(() => {
   }
 });
 
+watch(
+  () => orderStore.currentOrder,
+  (newOrder) => {
+    if (!map || props.role === 'passenger') return;
 
-watch(() => orderStore.currentOrder, (newOrder) => {
-  if (!map || props.role === 'passenger') return; 
+    if (newOrder && newOrder.order_id && newOrder.pickup_location && newOrder.destination) {
+      const parseCoords = (str: string): LatLng => {
+        const parts = str.replace(/[^\d.,-]/g, '').split(',');
+        return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]) };
+      };
 
-  if (newOrder && newOrder.order_id && newOrder.pickup_location && newOrder.destination) {
-    const parseCoords = (str) => {
-      const parts = str.replace(/[^\d.,-]/g, '').split(',');
-      return [parseFloat(parts[0]), parseFloat(parts[1])];
-    };
+      try {
+        const coordsA = parseCoords(newOrder.pickup_location);
+        const coordsB = parseCoords(newOrder.destination);
 
-    try {
-      const coordsA = parseCoords(newOrder.pickup_location);
-      const coordsB = parseCoords(newOrder.destination);
+        if (!markerA) markerA = L.marker([coordsA.lat, coordsA.lng]).addTo(map).bindPopup('📍 Пасажир тут');
+        if (!markerB) markerB = L.marker([coordsB.lat, coordsB.lng]).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
 
-      if (!markerA) markerA = L.marker(coordsA).addTo(map).bindPopup('📍 Пасажир тут');
-      if (!markerB) markerB = L.marker(coordsB).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
-
-      drawRoute(coordsA[0], coordsA[1], coordsB[0], coordsB[1], newOrder.safe_route_applied);
-    } catch (e) {
-      console.log("Парсинг адресних координат...");
+        drawRoute(coordsA, coordsB, newOrder.safe_route_applied);
+      } catch (e) {
+        console.log('Парсинг адресних координат...');
+      }
+    } else {
+      if (markerA) map.removeLayer(markerA);
+      if (markerB) map.removeLayer(markerB);
+      if (routeLine) map.removeLayer(routeLine);
+      markerA = null;
+      markerB = null;
+      routeLine = null;
     }
-  } else {
-    
-    if (markerA) map.removeLayer(markerA);
-    if (markerB) map.removeLayer(markerB);
-    if (routeLine) map.removeLayer(routeLine);
-    markerA = null; markerB = null; routeLine = null;
-  }
-}, { deep: true });
+  },
+  { deep: true },
+);
 
-watch(() => orderStore.useSafeRoute, () => {
-  if (props.role === 'passenger' && markerA && markerB) {
-    drawRoute(markerA.getLatLng().lat, markerA.getLatLng().lng, markerB.getLatLng().lat, markerB.getLatLng().lng, orderStore.useSafeRoute);
-  }
-});
+watch(
+  () => orderStore.useSafeRoute,
+  () => {
+    if (props.role === 'passenger' && markerA && markerB) {
+      drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute);
+    }
+  },
+);
 
-watch(() => orderStore.isBadWeather, () => {
-  renderAllZones();
-  if (props.role === 'passenger' && markerA && markerB) {
-    drawRoute(markerA.getLatLng().lat, markerA.getLatLng().lng, markerB.getLatLng().lat, markerB.getLatLng().lng, orderStore.useSafeRoute);
-  }
-});
+watch(
+  () => orderStore.isBadWeather,
+  () => {
+    renderAllZones();
+    if (props.role === 'passenger' && markerA && markerB) {
+      drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute);
+    }
+  },
+);
 </script>
 
 <style scoped>
