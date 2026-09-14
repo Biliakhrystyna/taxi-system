@@ -1,0 +1,30 @@
+# --- Frontend (client/) ---
+client/node_modules
+client/dist
+client/dist-ssr
+*.local
+*.tsbuildinfo
+.eslintcache
+
+# --- Backend (server/) ---
+server/**/bin/
+server/**/obj/
+server/**/*.user
+server/**/appsettings.Development.local.json
+
+# --- Editors / OS ---
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+
+# --- Logs ---
+logs
+*.log
+npm-debug.log*
+
+# Cypress / Vitest
+/cypress/videos/
+/cypress/screenshots/
+__screenshots__/
