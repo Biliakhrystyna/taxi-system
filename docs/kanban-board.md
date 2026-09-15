@@ -3,40 +3,61 @@
 Дошка ведеться як GitHub Project (Backlog → To Do → In Progress → In Review → Done),
 WIP-ліміт для «In Progress» — 2 картки. Кожен комміт посилається на номер картки/issue.
 
-## Done (ця ітерація — рефакторинг клієнта)
+Нижче — журнал того, що вже зроблено (можна один-в-один переносити як закриті
+картки з датою), і що лишилось у Backlog. Заголовки сформульовані як готові
+назви issue/карток.
 
+## Done
+
+### Ітерація 1 — рефакторинг клієнта
 - [x] Скаффолдинг монорепо (`client/`, `server/`, `docs/`)
-- [x] App.vue розбито на компоненти по ролях/екранах
-- [x] `orderStore.js` розділено на `authStore` / `orderStore` / `uiStore`
-- [x] Клієнт переведено на TypeScript (tooling + компоненти)
-- [x] Модуль препроцесингу/фільтрації геоданих карти (`components/map/geo/`)
+- [x] Розбити `App.vue` на компоненти по ролях/екранах (auth/passenger/driver/history/common)
+- [x] Розділити `orderStore.js` на `authStore` / `orderStore` / `uiStore`
+- [x] Перевести клієнт на TypeScript (tooling: tsconfig/vite/package.json + компоненти)
+- [x] Винести модуль препроцесингу/фільтрації геоданих карти (`components/map/geo/*.ts`)
+- [x] Написати архітектурний опис і Kanban-дошку (`docs/ARCHITECTURE.md`, цей файл)
+- [x] Знайти й виправити відсутню залежність `pinia` в `package.json`
+
+### Ітерація 2 — бекенд ASP.NET Core Web API
+- [x] Встановити .NET SDK 8 на машину розробки
+- [x] Підняти проєкт `TaxiSystem.Api` (net8.0) + EF Core + SQLite
+- [x] Створити сутності `User`, `Order` (одна таблиця замість `Orders`+`Trips`)
+- [x] Реалізувати BCrypt-хешування паролів (`PasswordHasher`)
+- [x] `AuthController` — реєстрація / логін / верифікація водія
+- [x] `OrdersController` — створення (тариф рахує сервер) / поточне замовлення / статус / історія
+- [x] `OrderHub` (SignalR) — push `OrderUpdated` / `ZonesUpdated`
+- [x] `DemandZoneCalculatorService` (`BackgroundService`) — перерахунок зон попиту раз на 60с
+- [x] Інтеграція Open-Meteo (`OpenMeteoClient` + `WeatherController`) — опади зараз + найближча
+      година (`current` + `minutely_15`), не прогноз на добу наперед
+- [x] Глобальна JSON naming policy `snake_case` (REST + SignalR) — щоб не переписувати
+      клієнтські шаблони під camelCase
+- [x] Локальна перевірка: `dotnet build` (0 помилок), `dotnet run`, ручний smoke-тест
+      усіх ендпоінтів через `curl` (weather, register/login, create/current order)
 
 ## Backlog (наступні картки)
 
-### Бекенд
-- [ ] Підняти ASP.NET Core Web API solution (`TaxiSystem.Api/Application/Domain/Infrastructure`)
-- [ ] EF Core: сутності `User`, `Driver`, `Order`, `Trip` + міграції
-- [ ] BCrypt-хешування паролів + `AuthController` (реєстрація/логін)
-- [ ] JWT-автентифікація + ролі (`passenger`/`driver`/`admin`)
-- [ ] SignalR `OrderHub` — статус замовлення й позиції водіїв у реальному часі
-- [ ] `BackgroundService` для розрахунку зон дефіциту (заміна `zonePreprocessor.ts`-рандому
-      на реальні дані з бекенду через SignalR)
-- [ ] Інтеграція Open-Meteo (forecast) — предиктивний аналіз погоди
-- [ ] Роль `admin` (передбачено ТЗ окремо не згадана, уточнити обсяг)
+### Клієнт ↔ бекенд
+- [ ] `services/http.ts` — базовий REST-клієнт
+- [ ] `services/authApi.ts` + переписати `authStore.ts`: Firebase → REST (`/api/auth/*`)
+- [ ] `services/orderApi.ts` + переписати `orderStore.ts`: Firebase → REST (`/api/orders/*`)
+- [ ] `services/signalr/orderHubConnection.ts` — підключення до `/hubs/orders`,
+      обробка `OrderUpdated`/`ZonesUpdated`
+- [ ] `services/weatherApi.ts` — виклик `/api/weather/forecast` при формуванні замовлення
+- [ ] Прибрати Firebase SDK / `firebase.js` / Firestore-залежність з `package.json`
+- [ ] Наскрізне тестування повного флоу (реєстрація → замовлення → прийняв → завершив → історія)
 
-### Клієнт
-- [ ] `authStore`/`orderStore`/`uiStore` — конвертація `.js` → `.ts`, типізація
-- [ ] `services/http.ts` + `authApi.ts`/`orderApi.ts` — REST-шар замість Firestore
-- [ ] `services/signalr/orderHubConnection.ts` — підключення до `OrderHub`
+### Опційно, якщо лишиться час
+- [ ] `authStore`/`orderStore`/`uiStore` — конвертація `.js` → `.ts`
 - [ ] `utils/localCache.ts` — кешування на клієнті (`localStorage`)
-- [ ] Видалення Firebase SDK/Firestore після переходу на REST+SignalR
+- [ ] Базові xUnit-тести (`PasswordHasher`, розрахунок тарифу)
 
-### Якість
-- [ ] Базові xUnit-тести (`AuthService`, BCrypt-хешування)
-- [ ] `npm run type-check` у CI (GitHub Actions) — опційно
+## Свідомо поза обсягом цієї практики (не заводити картки)
 
-## Примітка щодо BCrypt / .NET SDK
+Рішення від 2026-09-15, продиктовано дедлайном 4 дні — див. `ARCHITECTURE.md`:
 
-У середовищі розробки цієї сесії не встановлено .NET SDK — файли бекенду
-писатимуться вручну та компілюватимуться/перевірятимуться на машині, де
-SDK є. Перед першою карткою бекенду варто перевірити `dotnet --version`.
+- JWT-автентифікація / ролі `[Authorize]` — ТЗ вимагає лише BCrypt, не токени
+- Роль `admin` + чат — велика фіча, не згадана буквально в ТЗ
+- OpenRouteService / реальна маршрутизація в обхід зон — синусоїда лишається візуалізацією-симуляцією
+- Рейтинги/відгуки, окрема сутність `Payments`
+- EF Core міграції (лишається `EnsureCreated()`), Docker-compose, CI, юніт-тести — можна
+  згадати в звіті як "плани на майбутнє"
