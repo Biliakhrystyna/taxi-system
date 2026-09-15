@@ -28,6 +28,8 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
     });
 
+builder.Services.AddHttpClient<OpenMeteoClient>();
+
 builder.Services.AddSingleton<DemandZoneStore>();
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
 builder.Services.AddHostedService<DemandZoneCalculatorService>();
