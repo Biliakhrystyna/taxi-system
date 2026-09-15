@@ -1,11 +1,11 @@
 <template>
   <div class="screen-card history-box">
-    <h2>📜 Історія виконаних поїздок з Firebase</h2>
+    <h2>📜 Історія виконаних поїздок</h2>
 
-    <div v-if="authStore.currentUser.role === 'passenger' && orderStore.passengerTrips.length === 0" class="no-data">Історія поїздок порожня.</div>
-    <div v-if="authStore.currentUser.role === 'driver' && orderStore.driverTrips.length === 0" class="no-data">Ви ще не виконали жодного рейсу.</div>
+    <div v-if="authStore.currentUser?.role === 'passenger' && orderStore.passengerTrips.length === 0" class="no-data">Історія поїздок порожня.</div>
+    <div v-if="authStore.currentUser?.role === 'driver' && orderStore.driverTrips.length === 0" class="no-data">Ви ще не виконали жодного рейсу.</div>
 
-    <table class="history-table" v-if="authStore.currentUser.role === 'passenger' ? orderStore.passengerTrips.length > 0 : orderStore.driverTrips.length > 0">
+    <table class="history-table" v-if="authStore.currentUser?.role === 'passenger' ? orderStore.passengerTrips.length > 0 : orderStore.driverTrips.length > 0">
       <thead>
         <tr>
           <th>ID</th>
@@ -16,7 +16,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="trip in (authStore.currentUser.role === 'passenger' ? orderStore.passengerTrips : orderStore.driverTrips)" :key="trip.order_id">
+        <tr v-for="trip in (authStore.currentUser?.role === 'passenger' ? orderStore.passengerTrips : orderStore.driverTrips)" :key="trip.order_id">
           <td>{{ trip.order_id.substring(4, 10) }}...</td>
           <td>{{ trip.destination }}</td>
 

@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { db } from '../firebase';
-import { doc, setDoc, updateDoc, onSnapshot, getDoc, collection, query, where } from 'firebase/firestore';
 import { useAuthStore } from './authStore';
 import { useUiStore } from './uiStore';
+import { orderApi } from '../services/orderApi';
+import { weatherApi } from '../services/weatherApi';
+import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
 
-// Замовлення, тариф, ШІ-зони та історія поїздок.
-// TODO(backend): замінити Firestore на REST + SignalR (OrderHub) до
-// ASP.NET Core API — див. docs/ARCHITECTURE.md.
+// Замовлення, тариф (рахує тепер сервер), ШІ-зони та історія поїздок —
+// REST + SignalR (OrderHub) до ASP.NET Core, а не Firestore.
 export const useOrderStore = defineStore('order', () => {
   const pickupLocation = ref('');
   const destinationLocation = ref('');
@@ -15,17 +15,28 @@ export const useOrderStore = defineStore('order', () => {
 
   const paymentMethod = ref('cash');
   const cardNumber = ref('');
-  const cardExpiry = ref(''); // Термін дії (MM/YY)
+  const cardExpiry = ref('');
   const cardCvv = ref('');
   const isCardPaying = ref(false);
   const cardPaymentSuccess = ref(false);
 
-  // Стан замовлень та ШІ
+  /** @type {import('vue').Ref<import('../types/order').ApiOrder | null>} */
   const currentOrder = ref(null);
   const isBadWeather = ref(false);
   const selectedZone = ref('center');
   const showAIWarning = ref(false);
   const useSafeRoute = ref(false);
+
+  /** @type {import('vue').Ref<import('../types/order').ApiOrder[]>} */
+  const passengerTrips = ref([]);
+  /** @type {import('vue').Ref<import('../types/order').ApiOrder[]>} */
+  const driverTrips = ref([]);
+  const totalTripsCounter = ref(0);
+
+  // email/роль поточного користувача — потрібні всередині SignalR-хендлера,
+  // куди authStore напряму не передається (щоб не зв'язувати стори зайвим імпортом).
+  let sessionEmail = null;
+  let sessionRole = null;
 
   const toggleWeather = () => {
     isBadWeather.value = !isBadWeather.value;
@@ -36,14 +47,9 @@ export const useOrderStore = defineStore('order', () => {
     }
   };
 
-  // Історія та каунтери
-  const passengerTrips = ref([]);
-  const driverTrips = ref([]);
-  const totalTripsCounter = ref(0);
-
-  // Скидання замовлення/історії поточної сесії — використовується
-  // на початку кожної спроби входу/реєстрації та при виході з акаунту.
   const resetSession = () => {
+    sessionEmail = null;
+    sessionRole = null;
     currentOrder.value = null;
     passengerTrips.value = [];
     driverTrips.value = [];
@@ -53,40 +59,82 @@ export const useOrderStore = defineStore('order', () => {
     destinationLocation.value = '';
   };
 
-  // Налаштування real-time відстеження каунтерів, історії та поточного замовлення
-  const subscribeToUserData = (email, role) => {
+  const refreshHistory = async () => {
+    if (!sessionEmail) return;
+    const trips = await orderApi.getHistory(sessionEmail, sessionRole);
+    if (sessionRole === 'driver') {
+      driverTrips.value = trips;
+    } else {
+      passengerTrips.value = trips;
+    }
+  };
+
+  // Push із SignalR OrderHub. Сервер шле подію ВСІМ клієнтам — тут фільтруємо,
+  // чи вона взагалі стосується поточного користувача (той самий глобальний
+  // "живий" заказ, що й раніше, тому водії бачать усі, пасажири — лише свої).
+  const handleOrderUpdated = (order) => {
+    if (!sessionEmail) return;
+    const isMine = sessionRole === 'driver' || order.passenger_email === sessionEmail;
+    if (!isMine) return;
+
+    if (order.current_status === 'completed') {
+      currentOrder.value = null;
+      const isMyCompletedTrip = order.passenger_email === sessionEmail || order.driver_email === sessionEmail;
+      if (isMyCompletedTrip) {
+        totalTripsCounter.value += 1;
+        refreshHistory();
+      }
+    } else {
+      currentOrder.value = order;
+    }
+  };
+
+  // Предиктивний аналіз погоди через Open-Meteo — початкове значення перемикача
+  // при вході в застосунок. Ручний тумблер (WeatherControls.vue) лишається як
+  // свідомо підписаний demo-режим для контрольованої демонстрації на захисті.
+  const fetchWeatherHazard = async () => {
+    try {
+      const forecast = await weatherApi.getForecast();
+      isBadWeather.value = forecast.hazard_level === 'HIGH';
+    } catch {
+      // Бекенд/Open-Meteo недоступні — лишаємо ручний перемикач як є.
+    }
+  };
+
+  // Ініціалізація сесії після успішного логіну/реєстрації/верифікації:
+  // поточне замовлення й історія одноразово через REST, далі — SignalR push.
+  const subscribeToUserData = async (email, role) => {
     if (!email) return;
 
-    onSnapshot(doc(db, "users", email), (snap) => {
-      if (snap.exists()) {
-        totalTripsCounter.value = snap.data().total_trips || 0;
-      }
-    });
+    sessionEmail = email;
+    sessionRole = role;
+    totalTripsCounter.value = 0;
 
-    onSnapshot(doc(db, "demo_orders", "live_order"), (snapshot) => {
-      currentOrder.value = snapshot.exists() ? snapshot.data() : null;
-    });
+    try {
+      const [current, history] = await Promise.all([
+        orderApi.getCurrent(email, role),
+        orderApi.getHistory(email, role),
+      ]);
 
-    const isDriver = role === 'driver';
-    const filterField = isDriver ? "driver_email" : "passenger_email";
-
-    const q = query(
-      collection(db, "trips_history"),
-      where(filterField, "==", email)
-    );
-
-    onSnapshot(q, (snapshot) => {
-      const trips = [];
-      snapshot.forEach((docSnap) => {
-        trips.push(docSnap.data());
-      });
-
-      if (isDriver) {
-        driverTrips.value = trips;
+      currentOrder.value = current;
+      if (role === 'driver') {
+        driverTrips.value = history;
       } else {
-        passengerTrips.value = trips;
+        passengerTrips.value = history;
       }
-    });
+    } catch {
+      // Бекенд недоступний — стартуємо з порожнім станом, а не валимо весь логін.
+    }
+
+    fetchWeatherHazard();
+
+    try {
+      const connection = await ensureOrderHubConnected();
+      connection.off('OrderUpdated');
+      connection.on('OrderUpdated', handleOrderUpdated);
+    } catch {
+      // Без SignalR застосунок лишається робочим на REST, просто без realtime-оновлень.
+    }
   };
 
   // ЛОГІКА ШІ ТА РОЗРАХУНКУ ТАРИФУ
@@ -103,113 +151,76 @@ export const useOrderStore = defineStore('order', () => {
   const createOrder = async () => {
     const authStore = useAuthStore();
     showAIWarning.value = false;
-    let basePrice = selectedZone.value === 'center' ? 120 : 180;
 
-    if (carClass.value === 'econom') basePrice -= 30;
-    if (carClass.value === 'lux') basePrice += 100;
+    try {
+      const order = await orderApi.create({
+        passenger_email: authStore.currentUser.email,
+        pickup_location: pickupLocation.value.trim() || 'Поточне місцезнаходження пасажира',
+        destination: destinationLocation.value,
+        car_class: carClass.value,
+        payment_method: paymentMethod.value,
+        zone: selectedZone.value,
+        is_bad_weather: isBadWeather.value,
+        safe_route_applied: useSafeRoute.value,
+      });
 
-    // Коефіцієнт погоди
-    let weatherCoeff = isBadWeather.value ? (useSafeRoute.value ? 1.45 : 1.3) : 1.0;
+      // Тариф і бонус тепер рахує сервер — просто показуємо, що повернулось.
+      currentOrder.value = order;
 
-    let bonus = selectedZone.value === 'outskirts' ? 50 : 0;
-
-    const from = pickupLocation.value.trim() || 'Поточне місцезнаходження пасажира';
-    const to = destinationLocation.value;
-
-    // Чітка фіксація початкового статусу платіжної системи
-    const chosenMethod = paymentMethod.value === 'card' ? 'Картка' : 'Готівка';
-    const initialPaymentStatus = chosenMethod === 'Картка' ? 'Оплачено карткою' : 'Очікує оплати готівкою';
-
-    const orderData = {
-      order_id: "ORD_" + Date.now(),
-      passenger_email: authStore.currentUser.email,
-      passenger_name: authStore.currentUser.first_name + " " + authStore.currentUser.last_name,
-      pickup_location: from,
-      destination: to,
-      car_class: carClass.value,
-      estimated_cost: Math.round(basePrice * weatherCoeff + bonus),
-      motivation_bonus: bonus,
-      weather_hazard_level: isBadWeather.value ? 'HIGH' : 'NORMAL',
-      current_status: 'waiting',
-      zone: selectedZone.value,
-      safe_route_applied: useSafeRoute.value,
-      payment_method: chosenMethod,
-      payment_status: initialPaymentStatus
-    };
-
-    await setDoc(doc(db, "demo_orders", "live_order"), orderData);
-
-    cardPaymentSuccess.value = false;
-    cardNumber.value = '';
-    cardExpiry.value = '';
-    cardCvv.value = '';
+      cardPaymentSuccess.value = false;
+      cardNumber.value = '';
+      cardExpiry.value = '';
+      cardCvv.value = '';
+    } catch {
+      alert("Не вдалося створити замовлення. Перевірте з'єднання з сервером.");
+    }
   };
 
-  // ОНОВЛЕННЯ СТАТУСУ ЗАМОВЛЕННЯ ТА СИНХРОНІЗАЦІЯ З FIREBASE
+  // ОНОВЛЕННЯ СТАТУСУ ЗАМОВЛЕННЯ
   const updateStatus = async (newStatus) => {
     if (!currentOrder.value) return;
     const authStore = useAuthStore();
     const uiStore = useUiStore();
 
-    const orderRef = doc(db, "demo_orders", "live_order");
-    const updateData = { current_status: newStatus };
+    try {
+      const order = await orderApi.updateStatus(currentOrder.value.order_id, {
+        new_status: newStatus,
+        driver_email: newStatus === 'accepted' ? authStore.currentUser.email : null,
+        driver_name:
+          newStatus === 'accepted'
+            ? `${authStore.currentUser.first_name} ${authStore.currentUser.last_name}`
+            : null,
+      });
 
-    if (newStatus === 'accepted') {
-      updateData.driver_email = authStore.currentUser.email;
-      updateData.driver_name = authStore.currentUser.first_name + " " + authStore.currentUser.last_name;
-      await updateDoc(orderRef, updateData);
-    }
-
-    if (newStatus === 'in_progress') {
-      await updateDoc(orderRef, updateData);
-    }
-
-    if (newStatus === 'completed') {
-      const endTimeStr = new Date().toLocaleTimeString();
-      const isCash = currentOrder.value.payment_method === 'Готівка';
-
-      const finalTripObj = {
-        ...currentOrder.value,
-        current_status: 'completed',
-        driver_email: authStore.currentUser.email,
-        driver_name: authStore.currentUser.first_name + " " + authStore.currentUser.last_name,
-        end_time: endTimeStr,
-        payment_status: isCash ? 'Оплачено готівкою (водію)' : 'Оплачено карткою'
-      };
-
-      const uniqueOrderKey = currentOrder.value.order_id || ("ORD_" + Date.now());
-      await setDoc(doc(db, "trips_history", uniqueOrderKey), finalTripObj);
-
-      const passRef = doc(db, "users", currentOrder.value.passenger_email);
-      const passSnap = await getDoc(passRef);
-      if (passSnap.exists()) {
-        await updateDoc(passRef, { total_trips: (passSnap.data().total_trips || 0) + 1 });
+      if (newStatus === 'completed') {
+        currentOrder.value = null;
+        totalTripsCounter.value += 1;
+        useSafeRoute.value = false;
+        pickupLocation.value = '';
+        destinationLocation.value = '';
+        uiStore.triggerSuccess('Поїздку успішно завершено! Каунтери оновлено.');
+      } else {
+        currentOrder.value = order;
       }
-
-      const drvRef = doc(db, "users", authStore.currentUser.email);
-      await updateDoc(drvRef, { total_trips: (totalTripsCounter.value + 1) });
-
-      await setDoc(doc(db, "demo_orders", "live_order"), {});
-
-      useSafeRoute.value = false;
-      pickupLocation.value = '';
-      destinationLocation.value = '';
-
-      uiStore.triggerSuccess("Поїздку успішно завершено! Каунтери оновлено.");
+    } catch {
+      alert("Не вдалося оновити статус замовлення. Перевірте з'єднання з сервером.");
     }
   };
 
-  const resetDemo = async () => {
-    await setDoc(doc(db, "demo_orders", "live_order"), {});
-    useSafeRoute.value = false;
+  // Очищення локально введених точок А/Б перед формуванням нового замовлення.
+  // Не зачіпає вже створене на сервері замовлення (раніше, з єдиним глобальним
+  // Firestore-документом, ця кнопка могла стерти й активне замовлення — тепер,
+  // коли кожне замовлення — реальний рядок у БД, це було б оманливо).
+  const resetDemo = () => {
     pickupLocation.value = '';
     destinationLocation.value = '';
+    useSafeRoute.value = false;
   };
 
   return {
     currentOrder, isBadWeather, selectedZone,
     showAIWarning, useSafeRoute, passengerTrips, driverTrips, totalTripsCounter,
     pickupLocation, destinationLocation, carClass, paymentMethod, cardNumber, cardExpiry, cardCvv, isCardPaying, cardPaymentSuccess,
-    toggleWeather, resetSession, subscribeToUserData, checkOrderConditions, createOrder, updateStatus, resetDemo
+    toggleWeather, resetSession, subscribeToUserData, checkOrderConditions, createOrder, updateStatus, resetDemo, fetchWeatherHazard
   };
 });

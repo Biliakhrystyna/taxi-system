@@ -4,7 +4,7 @@
     <div class="driver-badge-info" style="margin-bottom: 15px; font-size: 15px; color: #ffffff;">
       👨‍✈️ Автомобіль авторизовано як:
       <span style="text-transform: uppercase; color: #000000; font-weight: bold;">
-        {{ authStore.currentUser.driver_car_class || 'comfort' }}
+        {{ authStore.currentUser?.driver_car_class || 'comfort' }}
       </span>
     </div>
     <div v-if="!orderStore.currentOrder || !orderStore.currentOrder.order_id" class="no-orders">

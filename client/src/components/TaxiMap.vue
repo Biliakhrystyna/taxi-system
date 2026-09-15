@@ -17,14 +17,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue';
+import { onMounted, onUnmounted, watch } from 'vue';
+import type { HubConnection } from '@microsoft/signalr';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useOrderStore } from '../stores/orderStore';
 import type { DemandZoneCircle, LatLng } from '../types/geo';
-import { generateOutskirtsZones } from './map/geo/zonePreprocessor';
 import { isPointInAnyZone, filterZonesWithinBounds } from './map/geo/geoFilter';
 import { buildDirectRoute, buildSimulatedSafeRoute } from './map/geo/routeBuilder';
+import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
+import { LVIV_CENTER } from '../config';
 
 const props = defineProps<{
   role: 'passenger' | 'driver';
@@ -38,8 +40,16 @@ let markerA: L.Marker | null = null;
 let markerB: L.Marker | null = null;
 let routeLine: L.Polyline | null = null;
 let heatCircles: L.Circle[] = [];
-const LVIV_CENTER: LatLng = { lat: 49.8419, lng: 24.0315 };
+let hubConnection: HubConnection | null = null;
+
+// Зони підвищеного попиту тепер приходять з сервера (DemandZoneCalculatorService
+// через OrderHub), а не генеруються локально при монтуванні карти.
 let aiGeneratedDeficitZones: DemandZoneCircle[] = [];
+
+const handleZonesUpdated = (zones: DemandZoneCircle[]) => {
+  aiGeneratedDeficitZones = zones;
+  renderAllZones();
+};
 
 const renderAllZones = () => {
   if (!map) return;
@@ -115,8 +125,20 @@ onMounted(() => {
   map = L.map('map').setView([LVIV_CENTER.lat, LVIV_CENTER.lng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
-  aiGeneratedDeficitZones = generateOutskirtsZones(LVIV_CENTER.lat, LVIV_CENTER.lng, 3);
   renderAllZones();
+
+  ensureOrderHubConnected()
+    .then((connection) => {
+      hubConnection = connection;
+      connection.off('ZonesUpdated');
+      connection.on('ZonesUpdated', handleZonesUpdated);
+      // BackgroundService тіка раз на 60с — просимо поточні зони одразу,
+      // щоб не чекати до першого тіку після підключення.
+      return connection.invoke('RequestCurrentZones');
+    })
+    .catch(() => {
+      // Без SignalR карта лишається робочою, просто без теплової карти попиту.
+    });
 
   if (props.role === 'passenger') {
     map.on('click', (e) => {
@@ -204,6 +226,10 @@ watch(
     }
   },
 );
+
+onUnmounted(() => {
+  hubConnection?.off('ZonesUpdated', handleZonesUpdated);
+});
 </script>
 
 <style scoped>

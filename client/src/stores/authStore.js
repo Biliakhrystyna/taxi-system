@@ -1,17 +1,18 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { db } from '../firebase';
-import { doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { useOrderStore } from './orderStore';
 import { useUiStore } from './uiStore';
+import { authApi } from '../services/authApi';
+import { ApiError } from '../services/http';
 
-// Автентифікація, роль та реєстраційні дані користувача.
-// TODO(backend): замінити прямі виклики Firestore на REST-запити до
-// ASP.NET Core AuthController (JWT + BCrypt) — див. docs/ARCHITECTURE.md.
+// Автентифікація, роль та реєстраційні дані користувача — тепер через REST
+// до ASP.NET Core (AuthController), а не Firestore.
 export const useAuthStore = defineStore('auth', () => {
+  /** @type {import('vue').Ref<'passenger' | 'driver' | null>} */
   const userRole = ref(null);
   const authState = ref('role_selection');
   const isSignUp = ref(false);
+  /** @type {import('vue').Ref<import('../types/user').ApiUser | null>} */
   const currentUser = ref(null);
 
   const emailInput = ref('');
@@ -32,56 +33,51 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (!emailInput.value || !passwordInput.value) return;
 
-    const userDocRef = doc(db, "users", emailInput.value);
+    try {
+      if (isSignUp.value) {
+        const user = await authApi.register({
+          email: emailInput.value,
+          password: passwordInput.value,
+          first_name: firstNameInput.value,
+          last_name: lastNameInput.value,
+          phone: phoneInput.value,
+          role: userRole.value,
+          license_number: userRole.value === 'driver' ? licenseInput.value : null,
+          driver_car_class: userRole.value === 'driver' ? driverCarClass.value : null,
+        });
 
-    if (isSignUp.value) {
-      // РЕЄСТРАЦІЯ
-      const newUser = {
-        email: emailInput.value,
-        password_hash: passwordInput.value,
-        first_name: firstNameInput.value,
-        last_name: lastNameInput.value,
-        phone: phoneInput.value,
-        role: userRole.value,
-        status: userRole.value === 'driver' ? 'pending_verification' : 'active',
-        total_trips: 0
-      };
+        currentUser.value = user;
 
-      if (userRole.value === 'driver') {
-        newUser.license_number = licenseInput.value;
-        newUser.driver_car_class = driverCarClass.value;
-      }
-
-      await setDoc(userDocRef, newUser);
-      currentUser.value = newUser;
-
-      if (userRole.value === 'driver') {
-        authState.value = 'verified_check';
-      } else {
-        uiStore.triggerSuccess("Реєстрація пасажира успішна!");
-        authState.value = 'main_app';
-        orderStore.subscribeToUserData(currentUser.value.email, currentUser.value.role);
-      }
-    } else {
-      // ВХІД
-      const userSnap = await getDoc(userDocRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        if (userData.password_hash === passwordInput.value && userData.role === userRole.value) {
-          currentUser.value = userData;
-          uiStore.triggerSuccess(`Вітаємо, ${userData.first_name}! Вхід успішний.`);
-
-          if (userData.status === 'pending_verification') {
-            authState.value = 'verified_check';
-          } else {
-            authState.value = 'main_app';
-            orderStore.subscribeToUserData(currentUser.value.email, currentUser.value.role);
-          }
+        if (userRole.value === 'driver') {
+          authState.value = 'verified_check';
         } else {
-          alert("Невірний пароль або роль!");
+          uiStore.triggerSuccess('Реєстрація пасажира успішна!');
+          authState.value = 'main_app';
+          orderStore.subscribeToUserData(user.email, user.role);
         }
       } else {
-        alert("Користувача не знайдено! Пройдіть реєстрацію.");
+        const user = await authApi.login({
+          email: emailInput.value,
+          password: passwordInput.value,
+          role: userRole.value,
+        });
+
+        currentUser.value = user;
+        uiStore.triggerSuccess(`Вітаємо, ${user.first_name}! Вхід успішний.`);
+
+        if (user.status === 'pending_verification') {
+          authState.value = 'verified_check';
+        } else {
+          authState.value = 'main_app';
+          orderStore.subscribeToUserData(user.email, user.role);
+        }
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // Сервер уже повертає людяний текст (409/401/400) — показуємо як є.
+        alert(err.message || 'Помилка автентифікації.');
+      } else {
+        alert("Сталася помилка з'єднання з сервером. Перевірте, чи запущений бекенд (npm run у server/TaxiSystem.Api).");
       }
     }
   };
@@ -89,18 +85,15 @@ export const useAuthStore = defineStore('auth', () => {
   // Біометрична верифікація
   const verifyDriverDocuments = async () => {
     if (!currentUser.value) return;
-    const userDocRef = doc(db, "users", currentUser.value.email);
-    await updateDoc(userDocRef, {
-      status: 'active'
-    });
-
-    currentUser.value.status = 'active';
-    authState.value = 'main_app';
 
     const orderStore = useOrderStore();
-    orderStore.subscribeToUserData(currentUser.value.email, currentUser.value.role);
+    const user = await authApi.verifyDriver(currentUser.value.email);
 
-    useUiStore().triggerSuccess("Біометрію пройдено! Обліковий запис водія активовано.");
+    currentUser.value = user;
+    authState.value = 'main_app';
+    orderStore.subscribeToUserData(user.email, user.role);
+
+    useUiStore().triggerSuccess('Біометрію пройдено! Обліковий запис водія активовано.');
   };
 
   // ВИХІД З АКАУНТУ

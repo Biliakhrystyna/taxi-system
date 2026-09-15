@@ -3,7 +3,7 @@ export interface LatLng {
   lng: number;
 }
 
-/** Кругова зона попиту на мапі (тимчасова модель — див. zonePreprocessor.ts). */
+/** Кругова зона попиту на мапі — приходить із сервера (DemandZoneStore) через SignalR. */
 export interface DemandZoneCircle extends LatLng {
   id: string;
   /** Радіус зони в метрах. */

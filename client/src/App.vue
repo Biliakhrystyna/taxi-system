@@ -21,14 +21,14 @@
       <WeatherControls />
 
       <div class="user-profile-banner">
-        <span>👤 Користувач: <strong>{{ authStore.currentUser.first_name }} {{ authStore.currentUser.last_name }}</strong></span>
+        <span>👤 Користувач: <strong>{{ authStore.currentUser?.first_name }} {{ authStore.currentUser?.last_name }}</strong></span>
         <span class="counter-badge">📊 Ваш особистий лічильник поїздок в базі: <strong>{{ orderStore.totalTripsCounter }}</strong></span>
       </div>
 
       <div class="main-grid">
         <PassengerDashboard v-if="authStore.currentUser && authStore.currentUser.role === 'passenger'" />
 
-        <DriverDashboard v-if="authStore.currentUser.role === 'driver'" />
+        <DriverDashboard v-if="authStore.currentUser?.role === 'driver'" />
 
         <TripHistoryTable />
       </div>
