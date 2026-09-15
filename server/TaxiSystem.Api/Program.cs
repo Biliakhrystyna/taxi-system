@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using TaxiSystem.Api.BackgroundServices;
 using TaxiSystem.Api.Data;
+using TaxiSystem.Api.Hubs;
 using TaxiSystem.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,16 +13,24 @@ var clientOrigin = builder.Configuration["Client:Origin"] ?? "http://localhost:5
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=taxi.db"));
 
-// snake_case всюди (REST-відповіді) — щоб зберегти той самий формат полів
-// (order_id, pickup_location, ...), який клієнт уже використовував з Firestore,
-// і не переписувати всі шаблони під camelCase.
+// snake_case всюди (REST-відповіді й SignalR-повідомлення) — щоб зберегти той самий
+// формат полів (order_id, pickup_location, ...), який клієнт уже використовував
+// з Firestore, і не переписувати всі шаблони під camelCase.
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
     });
 
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    });
+
+builder.Services.AddSingleton<DemandZoneStore>();
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
+builder.Services.AddHostedService<DemandZoneCalculatorService>();
 
 builder.Services.AddCors(options =>
 {
@@ -28,7 +38,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(clientOrigin)
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials());
+              .AllowCredentials()); // потрібно для SignalR WebSocket-з'єднання
 });
 
 var app = builder.Build();
@@ -44,5 +54,6 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors(ClientCorsPolicy);
 app.MapControllers();
+app.MapHub<OrderHub>("/hubs/orders");
 
 app.Run();
