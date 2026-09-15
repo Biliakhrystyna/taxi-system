@@ -16,7 +16,10 @@ public record SafeRouteResult(IReadOnlyList<RoutePoint> Points, int TurnCount, d
 /// </summary>
 public class OpenRouteServiceClient
 {
-    private const string DirectionsUrl = "https://api.openrouteservice.org/v2/directions/driving-car";
+    // /geojson-варіант ендпоінту: geometry одразу як GeoJSON LineString замість
+    // закодованого polyline-рядка (звичайний /v2/directions/driving-car параметра
+    // "geometry_format" не приймає — тільки цей окремий шлях).
+    private const string DirectionsUrl = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
 
     /// <summary>
     /// Типи кроків ORS (`steps[].type`), які вважаємо реальним "поворотом":
@@ -59,7 +62,6 @@ public class OpenRouteServiceClient
             coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
             alternative_routes = new { target_count = 3, weight_factor = 1.6, share_factor = 0.6 },
             instructions = true,
-            geometry_format = "geojson",
         };
 
         try
@@ -79,13 +81,17 @@ public class OpenRouteServiceClient
 
             SafeRouteResult? best = null;
 
-            foreach (var route in doc.RootElement.GetProperty("routes").EnumerateArray())
+            // /geojson-відповідь — FeatureCollection: кожна альтернатива маршруту
+            // це окремий Feature (geometry — LineString напряму на фічі,
+            // segments/summary — під properties, а не поряд із geometry).
+            foreach (var feature in doc.RootElement.GetProperty("features").EnumerateArray())
             {
-                var points = ExtractPoints(route);
+                var points = ExtractPoints(feature);
                 if (points.Count == 0) continue;
 
-                var turnCount = CountTurns(route);
-                var distance = route.GetProperty("summary").GetProperty("distance").GetDouble();
+                var properties = feature.GetProperty("properties");
+                var turnCount = CountTurns(properties);
+                var distance = properties.GetProperty("summary").GetProperty("distance").GetDouble();
 
                 if (best is null || turnCount < best.TurnCount)
                 {
@@ -104,9 +110,9 @@ public class OpenRouteServiceClient
         }
     }
 
-    private static int CountTurns(JsonElement route)
+    private static int CountTurns(JsonElement properties)
     {
-        if (!route.TryGetProperty("segments", out var segments)) return 0;
+        if (!properties.TryGetProperty("segments", out var segments)) return 0;
 
         var turns = 0;
         foreach (var segment in segments.EnumerateArray())
@@ -125,18 +131,14 @@ public class OpenRouteServiceClient
         return turns;
     }
 
-    private static List<RoutePoint> ExtractPoints(JsonElement route)
+    private static List<RoutePoint> ExtractPoints(JsonElement feature)
     {
         var points = new List<RoutePoint>();
-        if (!route.TryGetProperty("geometry", out var geometry)) return points;
 
-        // geometry_format=geojson теоретично може повернути або GeoJSON-об'єкт
-        // {"type":"LineString","coordinates":[[lng,lat],...]}, або масив координат
-        // напряму — підтримуємо обидва варіанти захисно.
-        var coordinates = geometry.ValueKind == JsonValueKind.Array
-            ? geometry
-            : geometry.TryGetProperty("coordinates", out var coords) ? coords : default;
-
+        // feature.geometry — завжди GeoJSON LineString {"type":...,"coordinates":[[lng,lat],...]}
+        // на цьому /geojson-ендпоінті.
+        if (!feature.TryGetProperty("geometry", out var geometry)) return points;
+        if (!geometry.TryGetProperty("coordinates", out var coordinates)) return points;
         if (coordinates.ValueKind != JsonValueKind.Array) return points;
 
         foreach (var pair in coordinates.EnumerateArray())
