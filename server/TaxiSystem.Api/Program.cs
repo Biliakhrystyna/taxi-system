@@ -11,7 +11,8 @@ const string ClientCorsPolicy = "ClientDev";
 var clientOrigin = builder.Configuration["Client:Origin"] ?? "http://localhost:5173";
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=taxi.db"));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("Не задано рядок підключення ConnectionStrings:Default (PostgreSQL).")));
 
 // snake_case всюди (REST-відповіді й SignalR-повідомлення) — щоб зберегти той самий
 // формат полів (order_id, pickup_location, ...), який клієнт уже використовував
@@ -45,13 +46,13 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// EnsureCreated замість EF-міграцій — свідоме спрощення на час дедлайну практики,
-// створює схему БД напряму з моделі. Для еволюції схеми в майбутньому — перейти
-// на `dotnet ef migrations`.
+// Застосовує EF-міграції при старті — потрібно для PostgreSQL-хостингу, де файл
+// БД не можна просто "створити з моделі" (EnsureCreated) при кожному деплої:
+// схема має еволюціонувати керовано через `dotnet ef migrations`.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 }
 
 app.UseCors(ClientCorsPolicy);
