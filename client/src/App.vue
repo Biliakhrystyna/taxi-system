@@ -65,7 +65,7 @@ body {
   font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
   /* Фото тла з яскравим проявленням текстури дороги */
-  background-image: linear-gradient(rgba(11, 15, 25, 0.40), rgba(11, 15, 25, 0.55)), url('./assets/taxi.jpg.jpg');
+  background-image: linear-gradient(rgba(11, 15, 25, 0.40), rgba(11, 15, 25, 0.55)), url('./assets/taxi_background.jpg');
 
   background-size: cover;          /* Розтягує картинку на весь екран */
   background-position: center;     /* Центрує текстуру розмітки */
