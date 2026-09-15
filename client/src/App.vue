@@ -5,10 +5,11 @@
     </div>
 
     <header class="app-header">
-      <h1>🚖 Система таксі перевезень </h1>
-      <p>Розробник: Біляк Христина (Група ОІ-32)</p>
+      <h1>🚖 Система таксі перевезень</h1>
       <button v-if="authStore.authState === 'main_app'" class="btn logout-btn" @click="authStore.logout">🚪 Вийти з акаунту</button>
     </header>
+
+    <p class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
 
     <RoleSelector v-if="authStore.authState === 'role_selection'" />
 
@@ -74,7 +75,7 @@ body {
 
   color: #f8fafc; /* Білий колір для загального тексту поза картками */
   margin: 0;
-  padding: 20px;
+  padding: 16px 20px 20px;
 }
 
 .app-container {
@@ -83,7 +84,7 @@ body {
   position: relative;
 }
 
-/* 🏢 ШАПКА ПЛАТФОРМИ (ФЛЕКС-АДАПТИВНІСТЬ БЕЗ НАЛАЗАННЯ КНОПКИ) */
+/* 🏢 ШАПКА ПЛАТФОРМИ — заголовок завжди зверху й по центру, на будь-якому екрані */
 .app-header {
   display: flex;
   flex-direction: column;
@@ -91,25 +92,19 @@ body {
   justify-content: center;
   text-align: center;
   border-bottom: 3px solid #eab308; /* Фірмовий жовтий бордюр */
-  padding-bottom: 20px;
-  margin-bottom: 25px;
+  padding: 12px 16px 16px;
+  margin-bottom: 18px;
   position: relative;
   gap: 10px;
 }
 .app-header h1 {
   margin: 0;
   color: #eab308; /* Жовтий титул */
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 900; /* Максимально жирний шрифт */
   text-transform: uppercase; /* Тільки великі літери */
-  letter-spacing: 2px; /* Сучасний розріджений інтервал */
+  letter-spacing: 1px; /* Сучасний розріджений інтервал */
   text-shadow: 0 0 15px rgba(234, 179, 8, 0.3);
-}
-.app-header p {
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 500;
-  margin: 5px 0 0 0;
 }
 .logout-btn {
   background: #000000;
@@ -123,7 +118,6 @@ body {
   transition: all 0.2s;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 5px;
 }
 .logout-btn:hover {
   background: #eab308;
@@ -131,16 +125,29 @@ body {
   border-color: #000000;
 }
 
+/* Підпис розробника — фіксований у нижньому лівому куті екрана, дзеркально
+   до напису "TAXI" у нижньому правому куті фонового фото. */
+.dev-credit {
+  position: fixed;
+  left: 16px;
+  bottom: 14px;
+  margin: 0;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  z-index: 5;
+  pointer-events: none;
+}
+
+@media (min-width: 480px) {
+  .app-header { padding: 14px 90px 18px; }
+  .logout-btn { position: absolute; top: 14px; right: 16px; }
+}
+
 @media (min-width: 768px) {
-  .app-header {
-    flex-direction: row;
-    justify-content: space-between;
-    text-align: left;
-    align-items: center;
-  }
-  .logout-btn {
-    margin-top: 0;
-  }
+  .app-header h1 { font-size: 30px; letter-spacing: 2px; }
+  .dev-credit { left: 24px; bottom: 18px; font-size: 13px; }
 }
 
 /* 🖨️ НОВИЙ СТИЛЬ КАРТОК: ЖОВТИЙ ФОН, ЧОРНИЙ ОБІДОК, ЧОРНИЙ ШРИФТ */
