@@ -11,6 +11,9 @@ server/**/bin/
 server/**/obj/
 server/**/*.user
 server/**/appsettings.Development.local.json
+server/**/*.db
+server/**/*.db-shm
+server/**/*.db-wal
 
 # --- Editors / OS ---
 .vscode/*
