@@ -30,6 +30,7 @@ builder.Services.AddSignalR()
     });
 
 builder.Services.AddHttpClient<OpenMeteoClient>();
+builder.Services.AddHttpClient<OpenRouteServiceClient>();
 
 builder.Services.AddSingleton<DemandZoneStore>();
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();

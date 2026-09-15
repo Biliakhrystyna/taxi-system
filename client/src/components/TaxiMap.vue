@@ -26,6 +26,7 @@ import type { DemandZoneCircle, LatLng } from '../types/geo';
 import { isPointInAnyZone, filterZonesWithinBounds } from './map/geo/geoFilter';
 import { buildDirectRoute, buildSimulatedSafeRoute } from './map/geo/routeBuilder';
 import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
+import { routingApi } from '../services/routingApi';
 import { LVIV_CENTER } from '../config';
 
 const props = defineProps<{
@@ -89,12 +90,32 @@ const renderAllZones = () => {
 };
 
 // Універсальна функція малювання лінії маршруту (для пасажира і водія)
-const drawRoute = (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
+const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
   if (!map) return;
   if (routeLine) map.removeLayer(routeLine);
 
   if (isSafeApplied && orderStore.isBadWeather) {
-    const points = buildSimulatedSafeRoute(a, b);
+    // Спершу пробуємо реальний маршрут по дорогах з мінімумом поворотів
+    // (OpenRouteServiceClient на бекенді). Якщо ORS недоступний/без ключа —
+    // падаємо на клієнтську симуляцію (синусоїда), як і раніше.
+    let points: LatLng[] = [];
+    let popupLabel = '🛡️ ШІ-маршрут: симуляція обходу (ORS недоступний)';
+
+    try {
+      const safeRoute = await routingApi.getSafeRoute(a, b);
+      if (safeRoute && safeRoute.points.length > 1) {
+        points = safeRoute.points;
+        popupLabel = `🛡️ Безпечний маршрут (ORS): ${safeRoute.turn_count} поворотів`;
+      }
+    } catch {
+      // Мережева помилка/сервер лежить — тихо падаємо на симуляцію нижче.
+    }
+
+    if (points.length === 0) {
+      points = buildSimulatedSafeRoute(a, b);
+    }
+
+    if (!map) return; // компонент міг демонтуватись, поки чекали відповідь
 
     routeLine = L.polyline(points, {
       color: '#f97316',
@@ -104,7 +125,7 @@ const drawRoute = (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
     }).addTo(map);
 
     if (markerB && props.role === 'passenger') {
-      markerB.setPopupContent('🏁 Точка В<br><b style="color: #f97316;">🛡️ ШІ-маршрут: Оптимальний безпечний обхід</b>').openPopup();
+      markerB.setPopupContent(`🏁 Точка В<br><b style="color: #f97316;">${popupLabel}</b>`).openPopup();
     }
   } else {
     const points = buildDirectRoute(a, b);
