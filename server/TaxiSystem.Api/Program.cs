@@ -32,8 +32,13 @@ builder.Services.AddSignalR()
 builder.Services.AddHttpClient<OpenMeteoClient>();
 builder.Services.AddHttpClient<OpenRouteServiceClient>();
 builder.Services.AddHttpClient<OpenRouteServiceGeocodingClient>();
+// Nominatim (запасний геокодер) вимагає ідентифікований User-Agent — без
+// нього сервіс може відмовляти в запитах (політика використання OSM).
+builder.Services.AddHttpClient<NominatimGeocodingClient>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TaxiSystemPracticum/1.0 (student practicum project)");
+});
 
-builder.Services.AddSingleton<DemandZoneStore>();
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
 builder.Services.AddHostedService<DemandZoneCalculatorService>();
 

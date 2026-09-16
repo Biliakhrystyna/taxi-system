@@ -46,10 +46,16 @@ public class OpenRouteServiceGeocodingClient
     {
         if (string.IsNullOrWhiteSpace(_apiKey) || string.IsNullOrWhiteSpace(query)) return new List<GeocodedAddress>();
 
+        // focus.point (а не boundary.circle!) — це лише РАНЖУВАННЯ, не жорсткий
+        // фільтр: адреси біля Львова піднімаються вище у видачі, але пошук
+        // лишається світовим (потрібно, щоб можна було шукати вулиці будь-де —
+        // напр. в Києві — для перевірки реальної погоди в інших містах).
+        // boundary.circle раніше повністю відкидав усе поза колом — це й
+        // заважало б знайти щось за межами Львівської області.
         var url = $"{BaseUrl}/autocomplete?api_key={_apiKey}&text={Uri.EscapeDataString(query)}" +
-                  $"&boundary.circle.lat={nearLat.ToString(CultureInfo.InvariantCulture)}" +
-                  $"&boundary.circle.lon={nearLng.ToString(CultureInfo.InvariantCulture)}" +
-                  "&boundary.circle.radius=30&layers=address,street,venue,locality";
+                  $"&focus.point.lat={nearLat.ToString(CultureInfo.InvariantCulture)}" +
+                  $"&focus.point.lon={nearLng.ToString(CultureInfo.InvariantCulture)}" +
+                  "&layers=address,street,venue,locality";
 
         return await FetchAsync(url, ct);
     }
