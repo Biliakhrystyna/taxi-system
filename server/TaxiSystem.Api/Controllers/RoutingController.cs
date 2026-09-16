@@ -15,6 +15,20 @@ public class RoutingController : ControllerBase
     }
 
     /// <summary>
+    /// Стандартний (найшвидший) маршрут по справжніх дорогах — заміна прямої
+    /// лінії "навпростець" по мапі. Повертає null, якщо ORS недоступний/без
+    /// ключа — клієнт тоді сам падає на пряму лінію (routeBuilder.ts:buildDirectRoute).
+    /// </summary>
+    [HttpGet("route")]
+    public async Task<ActionResult<SafeRouteResult?>> GetRoute(
+        [FromQuery] double fromLat, [FromQuery] double fromLng,
+        [FromQuery] double toLat, [FromQuery] double toLng)
+    {
+        var result = await _ors.GetFastestRouteAsync(fromLat, fromLng, toLat, toLng, HttpContext.RequestAborted);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Реальний маршрут по дорогах з мінімумом поворотів (для дощу/поганої погоди).
     /// Повертає null, якщо ORS недоступний/без ключа — клієнт тоді сам падає на
     /// симуляцію (routeBuilder.ts:buildSimulatedSafeRoute).

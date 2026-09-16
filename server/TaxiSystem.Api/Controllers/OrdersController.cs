@@ -73,7 +73,7 @@ public class OrdersController : ControllerBase
     [HttpGet("current")]
     public async Task<ActionResult<OrderResponse?>> GetCurrent([FromQuery] string email, [FromQuery] string role)
     {
-        var query = _db.Orders.Where(o => o.CurrentStatus != "completed");
+        var query = _db.Orders.Where(o => o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
 
         query = role == "driver"
             ? query
@@ -86,7 +86,7 @@ public class OrdersController : ControllerBase
     [HttpGet("history")]
     public async Task<ActionResult<List<OrderResponse>>> GetHistory([FromQuery] string email, [FromQuery] string role)
     {
-        var query = _db.Orders.Where(o => o.CurrentStatus == "completed");
+        var query = _db.Orders.Where(o => o.CurrentStatus == "completed" || o.CurrentStatus == "cancelled");
 
         query = role == "driver"
             ? query.Where(o => o.DriverEmail == email)

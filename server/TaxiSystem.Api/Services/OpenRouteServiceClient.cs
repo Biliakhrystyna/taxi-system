@@ -44,12 +44,30 @@ public class OpenRouteServiceClient
     }
 
     /// <summary>
-    /// Повертає маршрут з найменшою кількістю поворотів серед альтернатив ORS,
-    /// або null, якщо ключ не задано чи сервіс недоступний — виклик тоді має
-    /// впасти на клієнтську симуляцію (routeBuilder.ts).
+    /// Стандартний (найшвидший) маршрут по справжніх дорогах — на відміну від
+    /// buildDirectRoute() на клієнті (пряма лінія "навпростець" по мапі, що
+    /// ігнорує будівлі/квартали/річки). Без запиту альтернатив — ORS сам
+    /// повертає єдиний оптимальний маршрут.
     /// </summary>
-    public async Task<SafeRouteResult?> GetSafestRouteAsync(
+    public Task<SafeRouteResult?> GetFastestRouteAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct = default)
+        => RequestRouteAsync(fromLat, fromLng, toLat, toLng, minimizeTurns: false, ct);
+
+    /// <summary>
+    /// Маршрут з найменшою кількістю поворотів серед альтернатив ORS (для
+    /// мокрої дороги) — на відміну від buildSimulatedSafeRoute() на клієнті
+    /// (намальована синусоїда без зв'язку з реальними поворотами).
+    /// </summary>
+    public Task<SafeRouteResult?> GetSafestRouteAsync(
+        double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct = default)
+        => RequestRouteAsync(fromLat, fromLng, toLat, toLng, minimizeTurns: true, ct);
+
+    /// <summary>
+    /// Повертає null, якщо ключ не задано чи сервіс недоступний — виклик тоді
+    /// має впасти на клієнтську симуляцію/пряму лінію (routeBuilder.ts).
+    /// </summary>
+    private async Task<SafeRouteResult?> RequestRouteAsync(
+        double fromLat, double fromLng, double toLat, double toLng, bool minimizeTurns, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
@@ -57,12 +75,21 @@ public class OpenRouteServiceClient
             return null;
         }
 
-        var body = new
-        {
-            coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
-            alternative_routes = new { target_count = 3, weight_factor = 1.6, share_factor = 0.6 },
-            instructions = true,
-        };
+        // alternative_routes запитуємо лише коли справді порівнюємо варіанти
+        // за кількістю поворотів — для звичайного найшвидшого маршруту це
+        // зайвий запит (ORS і так повертає один оптимальний).
+        object body = minimizeTurns
+            ? new
+            {
+                coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
+                alternative_routes = new { target_count = 3, weight_factor = 1.6, share_factor = 0.6 },
+                instructions = true,
+            }
+            : new
+            {
+                coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
+                instructions = true,
+            };
 
         try
         {
@@ -92,6 +119,12 @@ public class OpenRouteServiceClient
                 var properties = feature.GetProperty("properties");
                 var turnCount = CountTurns(properties);
                 var distance = properties.GetProperty("summary").GetProperty("distance").GetDouble();
+
+                if (!minimizeTurns)
+                {
+                    // Без alternative_routes ORS повертає один Feature — це і є відповідь.
+                    return new SafeRouteResult(points, turnCount, distance, "openrouteservice");
+                }
 
                 if (best is null || turnCount < best.TurnCount)
                 {
