@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Linq;
 
 namespace TaxiSystem.Api.Services;
 
@@ -51,45 +52,72 @@ public class OpenRouteServiceClient
     /// </summary>
     public Task<SafeRouteResult?> GetFastestRouteAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct = default)
-        => RequestRouteAsync(fromLat, fromLng, toLat, toLng, minimizeTurns: false, ct);
+        => RequestSingleRouteAsync(fromLat, fromLng, toLat, toLng, ct);
 
     /// <summary>
     /// Маршрут з найменшою кількістю поворотів серед альтернатив ORS (для
     /// мокрої дороги) — на відміну від buildSimulatedSafeRoute() на клієнті
     /// (намальована синусоїда без зв'язку з реальними поворотами).
+    /// Гарантовано не гірший за звичайний найшвидший маршрут за кількістю
+    /// поворотів: ORS у alternative_routes не завжди повертає той самий
+    /// "головний" варіант, що й звичайний запит без alternative_routes (сам
+    /// алгоритм пошуку альтернатив може піти іншим шляхом), тож без цієї
+    /// гарантії "безпечний" маршрут міг мати БІЛЬШЕ поворотів, ніж стандартний
+    /// (виявлено живою перевіркою — 8 проти 5 на реальних координатах).
     /// </summary>
-    public Task<SafeRouteResult?> GetSafestRouteAsync(
+    public async Task<SafeRouteResult?> GetSafestRouteAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct = default)
-        => RequestRouteAsync(fromLat, fromLng, toLat, toLng, minimizeTurns: true, ct);
-
-    /// <summary>
-    /// Повертає null, якщо ключ не задано чи сервіс недоступний — виклик тоді
-    /// має впасти на клієнтську симуляцію/пряму лінію (routeBuilder.ts).
-    /// </summary>
-    private async Task<SafeRouteResult?> RequestRouteAsync(
-        double fromLat, double fromLng, double toLat, double toLng, bool minimizeTurns, CancellationToken ct)
     {
+        var candidates = await RequestAlternativesAsync(fromLat, fromLng, toLat, toLng, ct);
+
+        var baseline = await RequestSingleRouteAsync(fromLat, fromLng, toLat, toLng, ct);
+        if (baseline is not null) candidates.Add(baseline);
+
+        if (candidates.Count == 0) return null;
+
+        return candidates
+            .OrderBy(r => r.TurnCount)
+            .ThenBy(r => r.DistanceMeters)
+            .First();
+    }
+
+    /// <summary>Повертає null, якщо ключ не задано чи сервіс недоступний.</summary>
+    private async Task<SafeRouteResult?> RequestSingleRouteAsync(
+        double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct)
+    {
+        var body = new
+        {
+            coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
+            instructions = true,
+        };
+
+        var features = await SendDirectionsRequestAsync(body, ct);
+        return features.Count > 0 ? features[0] : null;
+    }
+
+    /// <summary>Порожній список, якщо ключ не задано чи сервіс недоступний.</summary>
+    private async Task<List<SafeRouteResult>> RequestAlternativesAsync(
+        double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct)
+    {
+        var body = new
+        {
+            coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
+            alternative_routes = new { target_count = 3, weight_factor = 1.6, share_factor = 0.6 },
+            instructions = true,
+        };
+
+        return await SendDirectionsRequestAsync(body, ct);
+    }
+
+    private async Task<List<SafeRouteResult>> SendDirectionsRequestAsync(object body, CancellationToken ct)
+    {
+        var results = new List<SafeRouteResult>();
+
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
             _logger.LogWarning("OpenRouteService:ApiKey не задано — реальна маршрутизація пропущена.");
-            return null;
+            return results;
         }
-
-        // alternative_routes запитуємо лише коли справді порівнюємо варіанти
-        // за кількістю поворотів — для звичайного найшвидшого маршруту це
-        // зайвий запит (ORS і так повертає один оптимальний).
-        object body = minimizeTurns
-            ? new
-            {
-                coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
-                alternative_routes = new { target_count = 3, weight_factor = 1.6, share_factor = 0.6 },
-                instructions = true,
-            }
-            : new
-            {
-                coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
-                instructions = true,
-            };
 
         try
         {
@@ -106,8 +134,6 @@ public class OpenRouteServiceClient
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
-            SafeRouteResult? best = null;
-
             // /geojson-відповідь — FeatureCollection: кожна альтернатива маршруту
             // це окремий Feature (geometry — LineString напряму на фічі,
             // segments/summary — під properties, а не поряд із geometry).
@@ -120,27 +146,17 @@ public class OpenRouteServiceClient
                 var turnCount = CountTurns(properties);
                 var distance = properties.GetProperty("summary").GetProperty("distance").GetDouble();
 
-                if (!minimizeTurns)
-                {
-                    // Без alternative_routes ORS повертає один Feature — це і є відповідь.
-                    return new SafeRouteResult(points, turnCount, distance, "openrouteservice");
-                }
-
-                if (best is null || turnCount < best.TurnCount)
-                {
-                    best = new SafeRouteResult(points, turnCount, distance, "openrouteservice");
-                }
+                results.Add(new SafeRouteResult(points, turnCount, distance, "openrouteservice"));
             }
-
-            return best;
         }
         catch (Exception ex)
         {
             // ORS недоступний / вичерпано ліміт / мережева помилка — не валимо
             // запит клієнта, повертаємось до симуляції на клієнті.
             _logger.LogWarning(ex, "OpenRouteService недоступний, повертаємось до симуляції маршруту.");
-            return null;
         }
+
+        return results;
     }
 
     private static int CountTurns(JsonElement properties)
