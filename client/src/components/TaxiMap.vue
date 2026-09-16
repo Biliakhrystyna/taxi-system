@@ -2,7 +2,7 @@
   <div class="map-wrapper">
     <div id="map" class="leaflet-map-container"></div>
     <div class="map-hint">
-      💡 <span v-if="role === 'passenger'">Клікніть на мапі: 1-й клік — Точка А, 2-й клік — Точка В</span>
+      💡 <span v-if="role === 'passenger'">Введіть адресу вище або клікніть на мапі: 1-й клік — Точка А, 2-й клік — Точка В</span>
       <span v-else>Предиктивний ШІ-моніторинг дефіциту автомобілів</span>
     </div>
 
@@ -27,6 +27,7 @@ import { isPointInAnyZone, filterZonesWithinBounds } from './map/geo/geoFilter';
 import { buildDirectRoute, buildSimulatedSafeRoute } from './map/geo/routeBuilder';
 import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
 import { routingApi } from '../services/routingApi';
+import { geocodingApi } from '../services/geocodingApi';
 import { LVIV_CENTER } from '../config';
 
 const props = defineProps<{
@@ -128,7 +129,26 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
       markerB.setPopupContent(`🏁 Точка В<br><b style="color: #f97316;">${popupLabel}</b>`).openPopup();
     }
   } else {
-    const points = buildDirectRoute(a, b);
+    // Так само пробуємо реальний маршрут по дорогах (ORS) замість прямої
+    // лінії "навпростець" по мапі; якщо ORS недоступний — падаємо на пряму лінію.
+    let points: LatLng[] = [];
+    let popupLabel = '✨ Стандартний шлях (пряма лінія — ORS недоступний)';
+
+    try {
+      const route = await routingApi.getRoute(a, b);
+      if (route && route.points.length > 1) {
+        points = route.points;
+        popupLabel = '✨ Стандартний найкоротший шлях (по дорогах)';
+      }
+    } catch {
+      // Мережева помилка/сервер лежить — тихо падаємо на пряму лінію нижче.
+    }
+
+    if (points.length === 0) {
+      points = buildDirectRoute(a, b);
+    }
+
+    if (!map) return; // компонент міг демонтуватись, поки чекали відповідь
 
     routeLine = L.polyline(points, {
       color: '#38bdf8',
@@ -137,9 +157,50 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
     }).addTo(map);
 
     if (markerB && props.role === 'passenger') {
-      markerB.setPopupContent('🏁 Точка В<br><b style="color: #38bdf8;">✨ Стандартний найкоротший шлях</b>').openPopup();
+      markerB.setPopupContent(`🏁 Точка В<br><b style="color: #38bdf8;">${popupLabel}</b>`).openPopup();
     }
   }
+};
+
+// Єдина точка входу для встановлення точки А — байдуже, прийшли координати
+// з кліку на мапі чи з вибору в автопідказках адреси (AddressAutocomplete
+// у PassengerDashboard.vue пише напряму в orderStore.pickupCoords).
+const placePickupPoint = async (coords: LatLng) => {
+  if (!map) return;
+  if (markerA) map.removeLayer(markerA);
+  markerA = L.marker([coords.lat, coords.lng]).addTo(map).bindPopup('📍 Точка А (Звідки)').openPopup();
+
+  // Адресу вже могли підставити з автопідказок (тоді вона не порожня) —
+  // зворотне геокодування потрібне лише для кліку "наосліп" по мапі.
+  if (!orderStore.pickupLocation.trim()) {
+    try {
+      const address = await geocodingApi.reverse(coords.lat, coords.lng);
+      orderStore.pickupLocation = address?.label ?? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+    } catch {
+      orderStore.pickupLocation = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+    }
+  }
+};
+
+const placeDestinationPoint = async (coords: LatLng) => {
+  if (!map || !markerA) return;
+  if (markerB) map.removeLayer(markerB);
+  markerB = L.marker([coords.lat, coords.lng]).addTo(map).bindPopup('🏁 Точка В (Куди)').openPopup();
+
+  if (!orderStore.destinationLocation.trim()) {
+    try {
+      const address = await geocodingApi.reverse(coords.lat, coords.lng);
+      orderStore.destinationLocation = address?.label ?? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+    } catch {
+      orderStore.destinationLocation = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+    }
+  }
+
+  // Фільтрація: чи потрапляє точка Б в зону підвищеного попиту (ШІ-геофенсинг)
+  const insideDeficitZone = isPointInAnyZone(coords, aiGeneratedDeficitZones);
+  orderStore.selectedZone = insideDeficitZone ? 'outskirts' : 'center';
+
+  drawRoute(markerA.getLatLng(), coords, orderStore.useSafeRoute);
 };
 
 onMounted(() => {
@@ -162,38 +223,59 @@ onMounted(() => {
     });
 
   if (props.role === 'passenger') {
+    // Клік лише пише координати в стор — саме розміщення маркера/геокодування
+    // відбувається у watch() нижче, тій самій точці входу, що й вибір адреси
+    // з автопідказок (AddressAutocomplete у PassengerDashboard.vue).
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
 
-      if (!markerA) {
-        // Перший клік — Точка А
-        markerA = L.marker([lat, lng]).addTo(map!).bindPopup('📍 Точка А (Звідки)').openPopup();
-        orderStore.pickupLocation = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      } else if (!markerB) {
-        // Другий клік — Точка В
-        markerB = L.marker([lat, lng]).addTo(map!).bindPopup('🏁 Точка В (Куди)').openPopup();
-        orderStore.destinationLocation = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-
-        // Фільтрація: чи потрапляє точка Б в зону підвищеного попиту (ШІ-геофенсинг)
-        const insideDeficitZone = isPointInAnyZone({ lat, lng }, aiGeneratedDeficitZones);
-        orderStore.selectedZone = insideDeficitZone ? 'outskirts' : 'center';
-
-        drawRoute(markerA.getLatLng(), { lat, lng }, orderStore.useSafeRoute);
+      if (!orderStore.pickupCoords) {
+        orderStore.pickupCoords = { lat, lng };
+      } else if (!orderStore.destinationCoords) {
+        orderStore.destinationCoords = { lat, lng };
       } else {
         // Третій клік — повне скидання
-        if (markerA) map!.removeLayer(markerA);
-        if (markerB) map!.removeLayer(markerB);
-        if (routeLine) map!.removeLayer(routeLine);
-        markerA = null;
-        markerB = null;
-        routeLine = null;
         orderStore.pickupLocation = '';
         orderStore.destinationLocation = '';
+        orderStore.pickupCoords = null;
+        orderStore.destinationCoords = null;
         orderStore.selectedZone = 'center';
       }
     });
   }
 });
+
+watch(
+  () => orderStore.pickupCoords,
+  (coords) => {
+    if (props.role !== 'passenger') return;
+
+    if (coords) {
+      placePickupPoint(coords);
+      return;
+    }
+
+    // Скинуто ззовні (третій клік / "Очистити поточне замовлення") — прибираємо все.
+    if (markerA) { map?.removeLayer(markerA); markerA = null; }
+    if (markerB) { map?.removeLayer(markerB); markerB = null; }
+    if (routeLine) { map?.removeLayer(routeLine); routeLine = null; }
+  },
+);
+
+watch(
+  () => orderStore.destinationCoords,
+  (coords) => {
+    if (props.role !== 'passenger') return;
+
+    if (coords) {
+      placeDestinationPoint(coords);
+      return;
+    }
+
+    if (markerB) { map?.removeLayer(markerB); markerB = null; }
+    if (routeLine) { map?.removeLayer(routeLine); routeLine = null; }
+  },
+);
 
 watch(
   () => orderStore.currentOrder,

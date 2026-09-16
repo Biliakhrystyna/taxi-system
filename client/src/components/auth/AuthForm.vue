@@ -1,5 +1,5 @@
 <template>
-  <div class="auth-card">
+  <div class="auth-card login-card">
     <button class="back-link" @click="authStore.authState = 'role_selection'">← Назад до вибору ролі</button>
     <h2>
       {{ authStore.userRole === 'passenger' ? '🙋‍♀️ Кабінет Пасажира' : '🚖 Кабінет Водія' }} :
@@ -47,7 +47,13 @@
 
       <div class="form-group mt-2">
         <label>Пароль:</label>
-        <input type="password" v-model="authStore.passwordInput" placeholder="••••••••" class="form-input" required />
+        <input
+          type="password"
+          v-model="authStore.passwordInput"
+          :placeholder="authStore.isSignUp ? 'Щонайменше 8 символів' : '••••••••'"
+          class="form-input"
+          required
+        />
       </div>
 
       <div class="mt-4">

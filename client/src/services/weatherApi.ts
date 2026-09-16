@@ -4,6 +4,8 @@ export interface WeatherForecast {
   hazard_level: 'HIGH' | 'NORMAL';
   precipitation_mm: number;
   source: string;
+  /** Людське пояснення, чому HIGH/NORMAL — опади, ожеледиця, іній тощо. */
+  reason: string;
 }
 
 export const weatherApi = {

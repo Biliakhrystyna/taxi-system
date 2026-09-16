@@ -1,4 +1,4 @@
-export type OrderStatus = 'waiting' | 'accepted' | 'in_progress' | 'completed';
+export type OrderStatus = 'waiting' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
 export type DemandZoneName = 'center' | 'outskirts';
 
 /** Форма відповіді бекенду (`OrderResponse` у server/TaxiSystem.Api/DTOs/OrderDtos.cs). */

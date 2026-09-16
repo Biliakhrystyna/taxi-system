@@ -11,6 +11,10 @@ import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection'
 export const useOrderStore = defineStore('order', () => {
   const pickupLocation = ref('');
   const destinationLocation = ref('');
+  /** @type {import('vue').Ref<import('../types/geo').LatLng | null>} */
+  const pickupCoords = ref(null);
+  /** @type {import('vue').Ref<import('../types/geo').LatLng | null>} */
+  const destinationCoords = ref(null);
   const carClass = ref('comfort');
 
   const paymentMethod = ref('cash');
@@ -57,6 +61,8 @@ export const useOrderStore = defineStore('order', () => {
     showAIWarning.value = false;
     pickupLocation.value = '';
     destinationLocation.value = '';
+    pickupCoords.value = null;
+    destinationCoords.value = null;
   };
 
   const refreshHistory = async () => {
@@ -77,11 +83,14 @@ export const useOrderStore = defineStore('order', () => {
     const isMine = sessionRole === 'driver' || order.passenger_email === sessionEmail;
     if (!isMine) return;
 
-    if (order.current_status === 'completed') {
+    if (order.current_status === 'completed' || order.current_status === 'cancelled') {
       currentOrder.value = null;
-      const isMyCompletedTrip = order.passenger_email === sessionEmail || order.driver_email === sessionEmail;
-      if (isMyCompletedTrip) {
-        totalTripsCounter.value += 1;
+      const isMyTrip = order.passenger_email === sessionEmail || order.driver_email === sessionEmail;
+      if (isMyTrip) {
+        // Лічильник росте лише за завершені поїздки, не за скасовані.
+        if (order.current_status === 'completed') {
+          totalTripsCounter.value += 1;
+        }
         refreshHistory();
       }
     } else {
@@ -150,6 +159,7 @@ export const useOrderStore = defineStore('order', () => {
 
   const createOrder = async () => {
     const authStore = useAuthStore();
+    const uiStore = useUiStore();
     showAIWarning.value = false;
 
     try {
@@ -172,7 +182,7 @@ export const useOrderStore = defineStore('order', () => {
       cardExpiry.value = '';
       cardCvv.value = '';
     } catch {
-      alert("Не вдалося створити замовлення. Перевірте з'єднання з сервером.");
+      uiStore.triggerError("Не вдалося створити замовлення. Перевірте з'єднання з сервером.");
     }
   };
 
@@ -193,17 +203,28 @@ export const useOrderStore = defineStore('order', () => {
       });
 
       if (newStatus === 'completed') {
+        // Лічильник поїздок інкрементує handleOrderUpdated (SignalR-відлуння цього
+        // ж запиту) — не тут, інакше цей самий клієнт порахує поїздку двічі.
         currentOrder.value = null;
-        totalTripsCounter.value += 1;
         useSafeRoute.value = false;
         pickupLocation.value = '';
         destinationLocation.value = '';
+        pickupCoords.value = null;
+        destinationCoords.value = null;
         uiStore.triggerSuccess('Поїздку успішно завершено! Каунтери оновлено.');
+      } else if (newStatus === 'cancelled') {
+        currentOrder.value = null;
+        useSafeRoute.value = false;
+        pickupLocation.value = '';
+        destinationLocation.value = '';
+        pickupCoords.value = null;
+        destinationCoords.value = null;
+        uiStore.triggerSuccess('Замовлення скасовано.');
       } else {
         currentOrder.value = order;
       }
     } catch {
-      alert("Не вдалося оновити статус замовлення. Перевірте з'єднання з сервером.");
+      uiStore.triggerError("Не вдалося оновити статус замовлення. Перевірте з'єднання з сервером.");
     }
   };
 
@@ -214,13 +235,16 @@ export const useOrderStore = defineStore('order', () => {
   const resetDemo = () => {
     pickupLocation.value = '';
     destinationLocation.value = '';
+    pickupCoords.value = null;
+    destinationCoords.value = null;
     useSafeRoute.value = false;
   };
 
   return {
     currentOrder, isBadWeather, selectedZone,
     showAIWarning, useSafeRoute, passengerTrips, driverTrips, totalTripsCounter,
-    pickupLocation, destinationLocation, carClass, paymentMethod, cardNumber, cardExpiry, cardCvv, isCardPaying, cardPaymentSuccess,
+    pickupLocation, destinationLocation, pickupCoords, destinationCoords,
+    carClass, paymentMethod, cardNumber, cardExpiry, cardCvv, isCardPaying, cardPaymentSuccess,
     toggleWeather, resetSession, subscribeToUserData, checkOrderConditions, createOrder, updateStatus, resetDemo, fetchWeatherHazard
   };
 });

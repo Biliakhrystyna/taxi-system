@@ -24,3 +24,10 @@ export interface SafeRouteResult {
   distance_meters: number;
   source: string;
 }
+
+/** Результат гео-пошуку (OpenRouteServiceGeocodingClient) — адреса з координатами. */
+export interface GeocodedAddress {
+  label: string;
+  lat: number;
+  lng: number;
+}

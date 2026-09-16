@@ -4,12 +4,16 @@
       🎉 {{ uiStore.showSuccessAlert }}
     </div>
 
+    <div v-if="uiStore.showErrorAlert" class="global-alert error-alert">
+      ⚠️ {{ uiStore.showErrorAlert }}
+    </div>
+
     <header class="app-header">
       <h1>🚖 Система таксі перевезень</h1>
       <button v-if="authStore.authState === 'main_app'" class="btn logout-btn" @click="authStore.logout">🚪 Вийти з акаунту</button>
     </header>
 
-    <p class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
+    <p v-if="!authStore.isSignUp" class="dev-credit">Розробник: Біляк Христина</p>
 
     <RoleSelector v-if="authStore.authState === 'role_selection'" />
 
@@ -23,7 +27,7 @@
 
       <div class="user-profile-banner">
         <span>👤 Користувач: <strong>{{ authStore.currentUser?.first_name }} {{ authStore.currentUser?.last_name }}</strong></span>
-        <span class="counter-badge">📊 Ваш особистий лічильник поїздок в базі: <strong>{{ orderStore.totalTripsCounter }}</strong></span>
+        <span class="counter-badge">📊 Ваш особистий лічильник поїздок: <strong>{{ orderStore.totalTripsCounter }}</strong></span>
       </div>
 
       <div class="main-grid">
@@ -57,7 +61,7 @@ const orderStore = useOrderStore();
 const uiStore = useUiStore();
 
 onMounted(() => {
-  // Якщо є збережені стани, можемо ініціалізувати
+  
 });
 </script>
 
@@ -65,11 +69,13 @@ onMounted(() => {
 body {
   font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-  /* Фото тла з яскравим проявленням текстури дороги */
-  background-image: linear-gradient(rgba(11, 15, 25, 0.40), rgba(11, 15, 25, 0.55)), url('./assets/taxi_background.jpg');
+  
+  background-image: linear-gradient(rgba(11, 15, 25, 0.40), rgba(11, 15, 25, 0.35)), url('./assets/taxi_background.jpg');
 
   background-size: cover;          /* Розтягує картинку на весь екран */
-  background-position: center;     /* Центрує текстуру розмітки */
+  background-position: right center; /* Прив'язано до правого краю — машинка на фото
+                                         лишається видимою при звуженні вікна замість
+                                         обрізання (з center обрізало б її першою) */
   background-attachment: fixed;    /* Залишає тло нерухомим при прокручуванні */
   background-repeat: no-repeat;
 
@@ -84,14 +90,14 @@ body {
   position: relative;
 }
 
-/* 🏢 ШАПКА ПЛАТФОРМИ — заголовок завжди зверху й по центру, на будь-якому екрані */
+
 .app-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  border-bottom: 3px solid #eab308; /* Фірмовий жовтий бордюр */
+  border-bottom: 3px solid #eab308; 
   padding: 12px 16px 16px;
   margin-bottom: 18px;
   position: relative;
@@ -125,14 +131,16 @@ body {
   border-color: #000000;
 }
 
-/* Підпис розробника — фіксований у нижньому лівому куті екрана, дзеркально
-   до напису "TAXI" у нижньому правому куті фонового фото. */
+
+/* Фіксований у нижньому лівому куті екрана, дзеркально до напису "TAXI"
+   у нижньому правому куті фонового фото. Ховається під час реєстрації
+   (v-if у шаблоні), бо саме там форма найдовша й перекривала б напис. */
 .dev-credit {
   position: fixed;
   left: 16px;
   bottom: 14px;
   margin: 0;
-  color: #f8fafc;
+  color: #eab308;
   font-size: 12px;
   font-weight: 500;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
@@ -148,6 +156,24 @@ body {
 @media (min-width: 768px) {
   .app-header h1 { font-size: 30px; letter-spacing: 2px; }
   .dev-credit { left: 24px; bottom: 18px; font-size: 13px; }
+}
+
+/* На широких екранах картки автентифікації (вибір ролі / логін / верифікація)
+   зсунуті ліворуч і не розтягуються на всю ширину — праворуч лишається видно
+   машинку з фонового фото, а не заховано під суцільною жовтою карткою. */
+@media (min-width: 1024px) {
+  .auth-card {
+    max-width: 560px;
+    margin-right: auto;
+  }
+}
+
+.auth-card {
+  margin-top: 90px;
+}
+
+.auth-card.login-card {
+  margin-top: 20px;
 }
 
 /* 🖨️ НОВИЙ СТИЛЬ КАРТОК: ЖОВТИЙ ФОН, ЧОРНИЙ ОБІДОК, ЧОРНИЙ ШРИФТ */
@@ -361,6 +387,7 @@ body {
 .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
 .badge.completed { background: #000000; color: #ffffff; border: 1px solid #000000; }
 .badge.waiting { background: #ffffff; color: #000000; border: 2px solid #000000; }
+.badge.cancelled { background: #dc2626; color: #ffffff; border: 1px solid #000000; }
 .no-data { color: #4b5563; padding: 20px; text-align: center; font-size: 13px; font-weight: bold; }
 
 /* 🔔 ГЛОБАЛЬНІ СПОВІЩЕННЯ */

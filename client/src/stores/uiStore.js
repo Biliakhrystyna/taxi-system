@@ -6,11 +6,18 @@ import { ref } from 'vue';
 export const useUiStore = defineStore('ui', () => {
   /** @type {import('vue').Ref<string | false>} */
   const showSuccessAlert = ref(false);
+  /** @type {import('vue').Ref<string | false>} */
+  const showErrorAlert = ref(false);
 
   const triggerSuccess = (msg) => {
     showSuccessAlert.value = msg;
     setTimeout(() => { showSuccessAlert.value = false; }, 3500);
   };
 
-  return { showSuccessAlert, triggerSuccess };
+  const triggerError = (msg) => {
+    showErrorAlert.value = msg;
+    setTimeout(() => { showErrorAlert.value = false; }, 4000);
+  };
+
+  return { showSuccessAlert, showErrorAlert, triggerSuccess, triggerError };
 });
