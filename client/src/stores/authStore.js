@@ -5,8 +5,8 @@ import { useUiStore } from './uiStore';
 import { authApi } from '../services/authApi';
 import { ApiError } from '../services/http';
 
-// Автентифікація, роль та реєстраційні дані користувача — тепер через REST
-// до ASP.NET Core (AuthController), а не Firestore.
+// Автентифікація, роль та реєстраційні дані користувача — через REST
+// до ASP.NET Core (AuthController).
 export const useAuthStore = defineStore('auth', () => {
   /** @type {import('vue').Ref<'passenger' | 'driver' | null>} */
   const userRole = ref(null);
@@ -133,8 +133,6 @@ export const useAuthStore = defineStore('auth', () => {
   };
 });
 
-// Без цього Vite оновлює файл стора "на льоту" (HMR), але вже створений
-// в браузері екземпляр лишається зі старими методами/полями.
 if (import.meta.hot) {
   import.meta.hot.accept(acceptHMRUpdate(useAuthStore, import.meta.hot));
 }

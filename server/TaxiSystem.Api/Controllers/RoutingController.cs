@@ -15,9 +15,7 @@ public class RoutingController : ControllerBase
     }
 
     /// <summary>
-    /// Стандартний (найшвидший) маршрут по справжніх дорогах — заміна прямої
-    /// лінії "навпростець" по мапі. Повертає null, якщо ORS недоступний/без
-    /// ключа — клієнт тоді сам падає на пряму лінію (routeBuilder.ts:buildDirectRoute).
+    /// Стандартний (найшвидший) маршрут по справжніх дорогах.
     /// </summary>
     [HttpGet("route")]
     public async Task<ActionResult<SafeRouteResult?>> GetRoute(
@@ -30,8 +28,7 @@ public class RoutingController : ControllerBase
 
     /// <summary>
     /// Реальний маршрут по дорогах з мінімумом поворотів (для дощу/поганої погоди).
-    /// Повертає null, якщо ORS недоступний/без ключа — клієнт тоді сам падає на
-    /// симуляцію (routeBuilder.ts:buildSimulatedSafeRoute).
+
     /// </summary>
     [HttpGet("safe-route")]
     public async Task<ActionResult<SafeRouteResult?>> GetSafeRoute(

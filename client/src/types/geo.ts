@@ -16,7 +16,7 @@ export interface MapBounds {
   west: number;
 }
 
-/** Реальний маршрут по дорогах з бекенду (OpenRouteServiceClient) — null, якщо сервіс недоступний. */
+/** Реальний маршрут по дорогах з бекенду (OpenRouteServiceClient)  */
 export interface SafeRouteResult {
   points: LatLng[];
   turn_count: number;

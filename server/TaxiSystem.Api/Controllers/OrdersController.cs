@@ -23,7 +23,7 @@ public class OrdersController : ControllerBase
 
     private const double MinimumFare = 50;
 
-    // Пряма (гаверсинова) відстань завжди коротша за реальну дорогу — цей
+    // Пряма відстань завжди коротша за реальну дорогу — цей
     // коефіцієнт наближає її до типової міської дороги, коли ORS недоступний
     // (вичерпана квота/мережева помилка) і реальну відстань дізнатись нізвідки.
     private const double RoadDetourFactor = 1.3;
@@ -60,10 +60,7 @@ public class OrdersController : ControllerBase
         var estimatedCost = (int)Math.Max(MinimumFare, Math.Round(basePrice * weatherCoeff));
 
         var paymentMethodLabel = request.PaymentMethod == "card" ? "Картка" : "Готівка";
-        // Картка раніше позначалась "оплачено" одразу при створенні — ще до
-        // поїздки й водія. Тепер симулюємо попередню авторизацію (як
-        // Uber/Bolt) і фактично "оплачено" виставляється лише при завершенні
-        // поїздки (UpdateStatus нижче) — так само, як і готівка.
+
         var initialPaymentStatus = paymentMethodLabel == "Картка" ? "Заброньовано карткою" : "Очікує оплати готівкою";
 
         var order = new Order
@@ -91,11 +88,7 @@ public class OrdersController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>
-    /// Для пасажира — його власне активне замовлення. Для водія — єдине активне
-    /// замовлення в системі (успадковано від оригінального прототипу, де був
-    /// один глобальний "живий" заказ на весь демо-стенд, а не черга по водіях).
-    /// </summary>
+   
     [HttpGet("current")]
     public async Task<ActionResult<OrderResponse?>> GetCurrent([FromQuery] string email, [FromQuery] string role)
     {

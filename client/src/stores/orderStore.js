@@ -7,8 +7,6 @@ import { weatherApi } from '../services/weatherApi';
 import { routingApi } from '../services/routingApi';
 import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
 
-// Замовлення, тариф (рахує тепер сервер), ШІ-зони та історія поїздок —
-// REST + SignalR (OrderHub) до ASP.NET Core, а не Firestore.
 export const useOrderStore = defineStore('order', () => {
   const pickupLocation = ref('');
   const destinationLocation = ref('');
@@ -40,7 +38,6 @@ export const useOrderStore = defineStore('order', () => {
   const totalTripsCounter = ref(0);
 
   // email/роль поточного користувача — потрібні всередині SignalR-хендлера,
-  // куди authStore напряму не передається (щоб не зв'язувати стори зайвим імпортом).
   let sessionEmail = null;
   let sessionRole = null;
 
@@ -77,9 +74,7 @@ export const useOrderStore = defineStore('order', () => {
     }
   };
 
-  // Push із SignalR OrderHub. Сервер шле подію ВСІМ клієнтам — тут фільтруємо,
-  // чи вона взагалі стосується поточного користувача (той самий глобальний
-  // "живий" заказ, що й раніше, тому водії бачать усі, пасажири — лише свої).
+
   const handleOrderUpdated = (order) => {
     if (!sessionEmail) return;
     const isMine = sessionRole === 'driver' || order.passenger_email === sessionEmail;
@@ -96,10 +91,6 @@ export const useOrderStore = defineStore('order', () => {
         refreshHistory();
       }
     } else {
-      // Раніше пасажир дізнавався про призначення водія лише мовчазною
-      // зміною тексту на екрані — "перед фактом", без жодного сигналу, що
-      // щось відбулось. Тепер активне сповіщення саме в момент переходу
-      // waiting → accepted (не при кожному оновленні статусу).
       const driverJustAssigned =
         sessionRole === 'passenger' &&
         order.current_status === 'accepted' &&
@@ -114,11 +105,7 @@ export const useOrderStore = defineStore('order', () => {
     }
   };
 
-  // Аналіз погоди через Open-Meteo для конкретної точки (за замовчуванням —
-  // опорна точка Львова). Викликається і одноразово при вході в застосунок,
-  // і повторно з реальними координатами точки А, щойно користувач її обирає
-  // (клік на мапі чи вибір з автопідказок адреси) — щоб показувати погоду
-  // саме там, куди їде пасажир, а не завжди в одному місці.
+  // Аналіз погоди через Open-Meteo для конкретної точки 
   const fetchWeatherHazard = async (lat, lng) => {
     try {
       const forecast = lat !== undefined && lng !== undefined
@@ -126,18 +113,11 @@ export const useOrderStore = defineStore('order', () => {
         : await weatherApi.getForecast();
       isBadWeather.value = forecast.hazard_level === 'HIGH';
     } catch {
-      // Бекенд/Open-Meteo недоступні — лишаємо перемикач як є.
+
     }
   };
 
-  // Періодичний push від DemandZoneCalculatorService (BackgroundService, раз
-  // на хвилину) — оновлює перемикач реальною погодою без дій користувача,
-  // АЛЕ лише поки користувач ще не обрав конкретну точку відправлення. Цей
-  // push завжди для однієї опорної точки (Львів) — якщо вже обрано реальну
-  // точку А (клік на мапі / пошук вулиці), точна перевірка саме для неї
-  // (fetchWeatherHazard(lat, lng)) не повинна перезаписуватись загальним
-  // львівським результатом, інакше маршрут "сам" відкочується на звичайний
-  // за кілька секунд, навіть якщо в точці А реально йде дощ.
+
   const handleWeatherUpdated = (forecast) => {
     if (pickupCoords.value) return;
     isBadWeather.value = forecast.hazard_level === 'HIGH';
@@ -165,7 +145,7 @@ export const useOrderStore = defineStore('order', () => {
         passengerTrips.value = history;
       }
     } catch {
-      // Бекенд недоступний — стартуємо з порожнім станом, а не валимо весь логін.
+     
     }
 
     fetchWeatherHazard();
@@ -181,9 +161,7 @@ export const useOrderStore = defineStore('order', () => {
     }
   };
 
-  // Реальні км/повороти для обох маршрутів — показуємо у вікні попередження
-  // про негоду замість статичного "+800 м" (те, яке ще навіть не рахувало
-  // жодних справжніх даних). null для якогось з полів = ORS недоступний.
+
   const loadRouteComparison = async () => {
     routeComparison.value = null;
     if (!pickupCoords.value || !destinationCoords.value) return;
@@ -225,7 +203,7 @@ export const useOrderStore = defineStore('order', () => {
         destination_lng: destinationCoords.value?.lng ?? null,
       });
 
-      // Тариф і бонус тепер рахує сервер — просто показуємо, що повернулось.
+      
       currentOrder.value = order;
 
       cardPaymentSuccess.value = false;
@@ -237,7 +215,7 @@ export const useOrderStore = defineStore('order', () => {
     }
   };
 
-  // ОНОВЛЕННЯ СТАТУСУ ЗАМОВЛЕННЯ
+  
   const updateStatus = async (newStatus) => {
     if (!currentOrder.value) return;
     const authStore = useAuthStore();
@@ -254,8 +232,7 @@ export const useOrderStore = defineStore('order', () => {
       });
 
       if (newStatus === 'completed') {
-        // Лічильник поїздок інкрементує handleOrderUpdated (SignalR-відлуння цього
-        // ж запиту) — не тут, інакше цей самий клієнт порахує поїздку двічі.
+       
         currentOrder.value = null;
         useSafeRoute.value = false;
         pickupLocation.value = '';
@@ -280,9 +257,6 @@ export const useOrderStore = defineStore('order', () => {
   };
 
   // Очищення локально введених точок А/Б перед формуванням нового замовлення.
-  // Не зачіпає вже створене на сервері замовлення (раніше, з єдиним глобальним
-  // Firestore-документом, ця кнопка могла стерти й активне замовлення — тепер,
-  // коли кожне замовлення — реальний рядок у БД, це було б оманливо).
   const resetDemo = () => {
     pickupLocation.value = '';
     destinationLocation.value = '';
@@ -300,10 +274,7 @@ export const useOrderStore = defineStore('order', () => {
   };
 });
 
-// Без цього Vite оновлює файл стора "на льоту" (HMR), але вже створений
-// в браузері екземпляр лишається зі старими методами/полями — доводилось би
-// щоразу вручну перезавантажувати сторінку після будь-якої зміни в сторі
-// (саме це щойно й трапилось: "loadRouteComparison is not a function").
+
 if (import.meta.hot) {
   import.meta.hot.accept(acceptHMRUpdate(useOrderStore, import.meta.hot));
 }

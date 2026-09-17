@@ -17,7 +17,7 @@ public class GeocodingController : ControllerBase
     }
 
     /// <summary>Координати → людська адреса (для кліку на мапі). Якщо ORS не дав
-    /// результату (напр. вичерпана добова квота) — пробуємо Nominatim.</summary>
+    /// результату (напр. вичерпана добова квота) — пробує Nominatim.</summary>
     [HttpGet("reverse")]
     public async Task<ActionResult<GeocodedAddress?>> Reverse([FromQuery] double lat, [FromQuery] double lng)
     {
@@ -27,7 +27,7 @@ public class GeocodingController : ControllerBase
     }
 
     /// <summary>Автопідказки адрес за введеним текстом (для пошуку вулиці). Якщо
-    /// ORS повернув порожньо (напр. вичерпана добова квота) — пробуємо Nominatim.</summary>
+    /// ORS повернув порожньо (напр. вичерпана добова квота) — пробує Nominatim.</summary>
     [HttpGet("search")]
     public async Task<ActionResult<List<GeocodedAddress>>> Search([FromQuery] string query)
     {

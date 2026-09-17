@@ -14,9 +14,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Не задано рядок підключення ConnectionStrings:Default (PostgreSQL).")));
 
-// snake_case всюди (REST-відповіді й SignalR-повідомлення) — щоб зберегти той самий
-// формат полів (order_id, pickup_location, ...), який клієнт уже використовував
-// з Firestore, і не переписувати всі шаблони під camelCase.
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

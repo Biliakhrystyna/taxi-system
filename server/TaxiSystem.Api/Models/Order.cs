@@ -1,10 +1,6 @@
 namespace TaxiSystem.Api.Models;
 
-/// <summary>
-/// Одна таблиця для активних замовлень і завершеної історії — свідоме спрощення
-/// (замість окремих Orders + Trips): завершений рядок (CurrentStatus == "completed")
-/// просто лишається в тій самій таблиці й відбирається фільтром по статусу.
-/// </summary>
+
 public class Order
 {
     public string OrderId { get; set; } = string.Empty;

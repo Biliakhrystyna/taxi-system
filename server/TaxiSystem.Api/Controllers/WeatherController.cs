@@ -14,7 +14,7 @@ public class WeatherController : ControllerBase
         _openMeteo = openMeteo;
     }
 
-    /// <summary>Прогноз погоди для Львова (координати за замовчуванням) або довільної точки.</summary>
+
     [HttpGet("forecast")]
     public async Task<ActionResult<WeatherForecast>> Forecast(
         [FromQuery] double lat = MapDefaults.LvivLat,
