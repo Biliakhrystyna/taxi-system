@@ -1,9 +1,10 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useAuthStore } from './authStore';
 import { useUiStore } from './uiStore';
 import { orderApi } from '../services/orderApi';
 import { weatherApi } from '../services/weatherApi';
+import { routingApi } from '../services/routingApi';
 import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
 
 // Замовлення, тариф (рахує тепер сервер), ШІ-зони та історія поїздок —
@@ -27,9 +28,10 @@ export const useOrderStore = defineStore('order', () => {
   /** @type {import('vue').Ref<import('../types/order').ApiOrder | null>} */
   const currentOrder = ref(null);
   const isBadWeather = ref(false);
-  const selectedZone = ref('center');
   const showAIWarning = ref(false);
   const useSafeRoute = ref(false);
+  /** @type {import('vue').Ref<{standardKm: number|null, standardTurns: number|null, safeKm: number|null, safeTurns: number|null}|null>} */
+  const routeComparison = ref(null);
 
   /** @type {import('vue').Ref<import('../types/order').ApiOrder[]>} */
   const passengerTrips = ref([]);
@@ -94,20 +96,51 @@ export const useOrderStore = defineStore('order', () => {
         refreshHistory();
       }
     } else {
+      // Раніше пасажир дізнавався про призначення водія лише мовчазною
+      // зміною тексту на екрані — "перед фактом", без жодного сигналу, що
+      // щось відбулось. Тепер активне сповіщення саме в момент переходу
+      // waiting → accepted (не при кожному оновленні статусу).
+      const driverJustAssigned =
+        sessionRole === 'passenger' &&
+        order.current_status === 'accepted' &&
+        order.driver_name &&
+        currentOrder.value?.current_status !== 'accepted';
+
       currentOrder.value = order;
+
+      if (driverJustAssigned) {
+        useUiStore().triggerSuccess(`🚖 Водія призначено: ${order.driver_name}!`);
+      }
     }
   };
 
-  // Предиктивний аналіз погоди через Open-Meteo — початкове значення перемикача
-  // при вході в застосунок. Ручний тумблер (WeatherControls.vue) лишається як
-  // свідомо підписаний demo-режим для контрольованої демонстрації на захисті.
-  const fetchWeatherHazard = async () => {
+  // Аналіз погоди через Open-Meteo для конкретної точки (за замовчуванням —
+  // опорна точка Львова). Викликається і одноразово при вході в застосунок,
+  // і повторно з реальними координатами точки А, щойно користувач її обирає
+  // (клік на мапі чи вибір з автопідказок адреси) — щоб показувати погоду
+  // саме там, куди їде пасажир, а не завжди в одному місці.
+  const fetchWeatherHazard = async (lat, lng) => {
     try {
-      const forecast = await weatherApi.getForecast();
+      const forecast = lat !== undefined && lng !== undefined
+        ? await weatherApi.getForecast(lat, lng)
+        : await weatherApi.getForecast();
       isBadWeather.value = forecast.hazard_level === 'HIGH';
     } catch {
-      // Бекенд/Open-Meteo недоступні — лишаємо ручний перемикач як є.
+      // Бекенд/Open-Meteo недоступні — лишаємо перемикач як є.
     }
+  };
+
+  // Періодичний push від DemandZoneCalculatorService (BackgroundService, раз
+  // на хвилину) — оновлює перемикач реальною погодою без дій користувача,
+  // АЛЕ лише поки користувач ще не обрав конкретну точку відправлення. Цей
+  // push завжди для однієї опорної точки (Львів) — якщо вже обрано реальну
+  // точку А (клік на мапі / пошук вулиці), точна перевірка саме для неї
+  // (fetchWeatherHazard(lat, lng)) не повинна перезаписуватись загальним
+  // львівським результатом, інакше маршрут "сам" відкочується на звичайний
+  // за кілька секунд, навіть якщо в точці А реально йде дощ.
+  const handleWeatherUpdated = (forecast) => {
+    if (pickupCoords.value) return;
+    isBadWeather.value = forecast.hazard_level === 'HIGH';
   };
 
   // Ініціалізація сесії після успішного логіну/реєстрації/верифікації:
@@ -141,19 +174,34 @@ export const useOrderStore = defineStore('order', () => {
       const connection = await ensureOrderHubConnected();
       connection.off('OrderUpdated');
       connection.on('OrderUpdated', handleOrderUpdated);
+      connection.off('WeatherUpdated');
+      connection.on('WeatherUpdated', handleWeatherUpdated);
     } catch {
       // Без SignalR застосунок лишається робочим на REST, просто без realtime-оновлень.
     }
   };
 
-  // ЛОГІКА ШІ ТА РОЗРАХУНКУ ТАРИФУ
-  const checkOrderConditions = (zone) => {
-    selectedZone.value = zone;
-    destinationLocation.value = zone === 'center' ? 'Львів, Площа Ринок, 1' : 'Львів, Сихів (вул. Зубрівська, 12)';
-    if (isBadWeather.value) {
-      showAIWarning.value = true;
-    } else {
-      createOrder();
+  // Реальні км/повороти для обох маршрутів — показуємо у вікні попередження
+  // про негоду замість статичного "+800 м" (те, яке ще навіть не рахувало
+  // жодних справжніх даних). null для якогось з полів = ORS недоступний.
+  const loadRouteComparison = async () => {
+    routeComparison.value = null;
+    if (!pickupCoords.value || !destinationCoords.value) return;
+
+    try {
+      const [standard, safe] = await Promise.all([
+        routingApi.getRoute(pickupCoords.value, destinationCoords.value),
+        routingApi.getSafeRoute(pickupCoords.value, destinationCoords.value),
+      ]);
+
+      routeComparison.value = {
+        standardKm: standard ? standard.distance_meters / 1000 : null,
+        standardTurns: standard ? standard.turn_count : null,
+        safeKm: safe ? safe.distance_meters / 1000 : null,
+        safeTurns: safe ? safe.turn_count : null,
+      };
+    } catch {
+      routeComparison.value = null;
     }
   };
 
@@ -169,9 +217,12 @@ export const useOrderStore = defineStore('order', () => {
         destination: destinationLocation.value,
         car_class: carClass.value,
         payment_method: paymentMethod.value,
-        zone: selectedZone.value,
         is_bad_weather: isBadWeather.value,
         safe_route_applied: useSafeRoute.value,
+        pickup_lat: pickupCoords.value?.lat ?? null,
+        pickup_lng: pickupCoords.value?.lng ?? null,
+        destination_lat: destinationCoords.value?.lat ?? null,
+        destination_lng: destinationCoords.value?.lng ?? null,
       });
 
       // Тариф і бонус тепер рахує сервер — просто показуємо, що повернулось.
@@ -241,10 +292,18 @@ export const useOrderStore = defineStore('order', () => {
   };
 
   return {
-    currentOrder, isBadWeather, selectedZone,
-    showAIWarning, useSafeRoute, passengerTrips, driverTrips, totalTripsCounter,
+    currentOrder, isBadWeather,
+    showAIWarning, useSafeRoute, routeComparison, passengerTrips, driverTrips, totalTripsCounter,
     pickupLocation, destinationLocation, pickupCoords, destinationCoords,
     carClass, paymentMethod, cardNumber, cardExpiry, cardCvv, isCardPaying, cardPaymentSuccess,
-    toggleWeather, resetSession, subscribeToUserData, checkOrderConditions, createOrder, updateStatus, resetDemo, fetchWeatherHazard
+    toggleWeather, resetSession, subscribeToUserData, createOrder, updateStatus, resetDemo, fetchWeatherHazard, loadRouteComparison
   };
 });
+
+// Без цього Vite оновлює файл стора "на льоту" (HMR), але вже створений
+// в браузері екземпляр лишається зі старими методами/полями — доводилось би
+// щоразу вручну перезавантажувати сторінку після будь-якої зміни в сторі
+// (саме це щойно й трапилось: "loadRouteComparison is not a function").
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useOrderStore, import.meta.hot));
+}

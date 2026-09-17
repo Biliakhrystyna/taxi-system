@@ -12,14 +12,29 @@
       </p>
 
       <div style="background: rgba(30, 41, 59, 0.6); padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #334155;">
-        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
-          <span style="color: #38bdf8;">🔵 Стандартний шлях:</span>
-          <span style="font-weight: bold;">Найкоротший (Але є ризик злетіти з дороги)</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #f97316;">
-          <span> Безпечний ШІ-маршрут:</span>
-          <span style="font-weight: bold;">+800 м в обхід </span>
-        </div>
+        <template v-if="orderStore.routeComparison && orderStore.routeComparison.standardKm !== null && orderStore.routeComparison.safeKm !== null">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
+            <span style="color: #38bdf8;">🔵 Стандартний шлях:</span>
+            <span style="font-weight: bold;">{{ orderStore.routeComparison.standardKm.toFixed(1) }} км, {{ orderStore.routeComparison.standardTurns }} поворотів</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #f97316;">
+            <span>🛡️ Безпечний ШІ-маршрут:</span>
+            <span style="font-weight: bold;">{{ orderStore.routeComparison.safeKm.toFixed(1) }} км, {{ orderStore.routeComparison.safeTurns }} поворотів</span>
+          </div>
+          <div v-if="orderStore.routeComparison.safeKm > orderStore.routeComparison.standardKm" style="font-size: 12px; color: #94a3b8; margin-top: 6px; text-align: right;">
+            +{{ ((orderStore.routeComparison.safeKm - orderStore.routeComparison.standardKm) * 1000).toFixed(0) }} м в обхід
+          </div>
+        </template>
+        <template v-else>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
+            <span style="color: #38bdf8;">🔵 Стандартний шлях:</span>
+            <span style="font-weight: bold;">Найкоротший (Але є ризик злетіти з дороги)</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; color: #f97316;">
+            <span>🛡️ Безпечний ШІ-маршрут:</span>
+            <span style="font-weight: bold;">в обхід критичних ділянок</span>
+          </div>
+        </template>
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">

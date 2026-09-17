@@ -6,9 +6,15 @@ public record CreateOrderRequest(
     string Destination,
     string CarClass,
     string PaymentMethod,
-    string Zone, // "center" | "outskirts" — визначається клієнтом через geoFilter.ts за зонами з SignalR
     bool IsBadWeather,
-    bool SafeRouteApplied);
+    bool SafeRouteApplied,
+    // Координати можуть бути відсутні, якщо пасажир увів адресу вручну
+    // текстом, не вибравши з автопідказок і не клікнувши на мапі — тоді
+    // тариф рахується за розумним дефолтом дистанції (див. OrdersController).
+    double? PickupLat = null,
+    double? PickupLng = null,
+    double? DestinationLat = null,
+    double? DestinationLng = null);
 
 public record UpdateOrderStatusRequest(string NewStatus, string? DriverEmail, string? DriverName);
 
@@ -20,10 +26,8 @@ public record OrderResponse(
     string Destination,
     string CarClass,
     int EstimatedCost,
-    int MotivationBonus,
     string WeatherHazardLevel,
     string CurrentStatus,
-    string Zone,
     bool SafeRouteApplied,
     string PaymentMethod,
     string PaymentStatus,

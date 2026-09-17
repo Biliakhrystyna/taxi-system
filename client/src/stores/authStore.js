@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useOrderStore } from './orderStore';
 import { useUiStore } from './uiStore';
@@ -132,3 +132,9 @@ export const useAuthStore = defineStore('auth', () => {
     handleAuthSubmit, verifyDriverDocuments, logout
   };
 });
+
+// Без цього Vite оновлює файл стора "на льоту" (HMR), але вже створений
+// в браузері екземпляр лишається зі старими методами/полями.
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useAuthStore, import.meta.hot));
+}

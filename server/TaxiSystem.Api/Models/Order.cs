@@ -17,16 +17,12 @@ public class Order
     public string CarClass { get; set; } = string.Empty;
 
     public int EstimatedCost { get; set; }
-    public int MotivationBonus { get; set; }
 
     /// <summary>"HIGH" | "NORMAL"</summary>
     public string WeatherHazardLevel { get; set; } = "NORMAL";
 
     /// <summary>"waiting" | "accepted" | "in_progress" | "completed"</summary>
     public string CurrentStatus { get; set; } = "waiting";
-
-    /// <summary>"center" | "outskirts"</summary>
-    public string Zone { get; set; } = "center";
 
     public bool SafeRouteApplied { get; set; }
 

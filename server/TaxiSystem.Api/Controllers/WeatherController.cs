@@ -17,8 +17,8 @@ public class WeatherController : ControllerBase
     /// <summary>Прогноз погоди для Львова (координати за замовчуванням) або довільної точки.</summary>
     [HttpGet("forecast")]
     public async Task<ActionResult<WeatherForecast>> Forecast(
-        [FromQuery] double lat = DemandZoneStore.LvivLat,
-        [FromQuery] double lng = DemandZoneStore.LvivLng)
+        [FromQuery] double lat = MapDefaults.LvivLat,
+        [FromQuery] double lng = MapDefaults.LvivLng)
     {
         var forecast = await _openMeteo.GetHazardForecastAsync(lat, lng, HttpContext.RequestAborted);
         return Ok(forecast);

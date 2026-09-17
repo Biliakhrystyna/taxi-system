@@ -3,29 +3,18 @@
     <div id="map" class="leaflet-map-container"></div>
     <div class="map-hint">
       💡 <span v-if="role === 'passenger'">Введіть адресу вище або клікніть на мапі: 1-й клік — Точка А, 2-й клік — Точка В</span>
-      <span v-else>Предиктивний ШІ-моніторинг дефіциту автомобілів</span>
-    </div>
-
-    <div v-if="role === 'driver'" class="ai-legend">
-      <h4>🔥 ШІ: Теплова карта попиту</h4>
-      <div class="legend-scale">
-        <span class="scale-item red">High (Дефіцит / Бонус)</span>
-        <span class="scale-item green">Normal (Профіцит)</span>
-      </div>
+      <span v-else>Маршрут поточного замовлення</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue';
-import type { HubConnection } from '@microsoft/signalr';
+import { onMounted, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useOrderStore } from '../stores/orderStore';
-import type { DemandZoneCircle, LatLng } from '../types/geo';
-import { isPointInAnyZone, filterZonesWithinBounds } from './map/geo/geoFilter';
+import type { LatLng } from '../types/geo';
 import { buildDirectRoute, buildSimulatedSafeRoute } from './map/geo/routeBuilder';
-import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
 import { routingApi } from '../services/routingApi';
 import { geocodingApi } from '../services/geocodingApi';
 import { LVIV_CENTER } from '../config';
@@ -41,54 +30,6 @@ let map: L.Map | null = null;
 let markerA: L.Marker | null = null;
 let markerB: L.Marker | null = null;
 let routeLine: L.Polyline | null = null;
-let heatCircles: L.Circle[] = [];
-let hubConnection: HubConnection | null = null;
-
-// Зони підвищеного попиту тепер приходять з сервера (DemandZoneCalculatorService
-// через OrderHub), а не генеруються локально при монтуванні карти.
-let aiGeneratedDeficitZones: DemandZoneCircle[] = [];
-
-const handleZonesUpdated = (zones: DemandZoneCircle[]) => {
-  aiGeneratedDeficitZones = zones;
-  renderAllZones();
-};
-
-const renderAllZones = () => {
-  if (!map) return;
-  heatCircles.forEach((circle) => map!.removeLayer(circle));
-  heatCircles = [];
-
-  if (props.role === 'passenger') return;
-
-  // Зелені (профіцитні) зони — статичні опорні точки демо-режиму.
-  [
-    { coords: [49.8419, 24.0315] as [number, number], rad: 800 },
-    { coords: [49.835, 24.015] as [number, number], rad: 600 },
-  ].forEach((cz) => {
-    const gc = L.circle(cz.coords, { color: '#10b981', fillColor: '#34d399', fillOpacity: 0.1, radius: cz.rad, interactive: false }).addTo(map!);
-    heatCircles.push(gc);
-  });
-
-  // Червоні зони дефіциту — препроцесинг (фільтр за видимою областю карти) перед рендером.
-  const visibleBounds = map.getBounds();
-  const zonesToRender = filterZonesWithinBounds(aiGeneratedDeficitZones, {
-    north: visibleBounds.getNorth(),
-    south: visibleBounds.getSouth(),
-    east: visibleBounds.getEast(),
-    west: visibleBounds.getWest(),
-  });
-
-  zonesToRender.forEach((zone) => {
-    const rc = L.circle([zone.lat, zone.lng], {
-      color: '#ef4444',
-      fillColor: '#f87171',
-      fillOpacity: orderStore.isBadWeather ? 0.5 : 0.25,
-      radius: zone.radius,
-      interactive: false,
-    }).addTo(map!);
-    heatCircles.push(rc);
-  });
-};
 
 // Універсальна функція малювання лінії маршруту (для пасажира і водія)
 const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
@@ -180,6 +121,16 @@ const placePickupPoint = async (coords: LatLng) => {
       orderStore.pickupLocation = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
     }
   }
+
+  // Реальна погода саме в точці відправлення, а не в опорній точці Львова —
+  // щоб можна було демонструвати реальні опади, обравши будь-яку адресу.
+  orderStore.fetchWeatherHazard(coords.lat, coords.lng);
+
+  // Якщо точка Б вже стояла (з попереднього кліку чи пошуку) — маршрут мав
+  // перемалюватись під нову точку А, а не лишатись приклеєним до старої.
+  if (markerB) {
+    drawRoute(coords, markerB.getLatLng(), orderStore.useSafeRoute);
+  }
 };
 
 const placeDestinationPoint = async (coords: LatLng) => {
@@ -196,10 +147,6 @@ const placeDestinationPoint = async (coords: LatLng) => {
     }
   }
 
-  // Фільтрація: чи потрапляє точка Б в зону підвищеного попиту (ШІ-геофенсинг)
-  const insideDeficitZone = isPointInAnyZone(coords, aiGeneratedDeficitZones);
-  orderStore.selectedZone = insideDeficitZone ? 'outskirts' : 'center';
-
   drawRoute(markerA.getLatLng(), coords, orderStore.useSafeRoute);
 };
 
@@ -207,26 +154,18 @@ onMounted(() => {
   map = L.map('map').setView([LVIV_CENTER.lat, LVIV_CENTER.lng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
-  renderAllZones();
-
-  ensureOrderHubConnected()
-    .then((connection) => {
-      hubConnection = connection;
-      connection.off('ZonesUpdated');
-      connection.on('ZonesUpdated', handleZonesUpdated);
-      // BackgroundService тіка раз на 60с — просимо поточні зони одразу,
-      // щоб не чекати до першого тіку після підключення.
-      return connection.invoke('RequestCurrentZones');
-    })
-    .catch(() => {
-      // Без SignalR карта лишається робочою, просто без теплової карти попиту.
-    });
-
   if (props.role === 'passenger') {
     // Клік лише пише координати в стор — саме розміщення маркера/геокодування
     // відбувається у watch() нижче, тій самій точці входу, що й вибір адреси
     // з автопідказок (AddressAutocomplete у PassengerDashboard.vue).
     map.on('click', (e) => {
+      // Поки є активне замовлення — точки А/Б лишаються "заморожені" до кінця
+      // поїздки (завершення/скасування), клік по мапі більше їх не чіпає.
+      // Раніше третій клік завжди повністю скидав обидві точки, навіть якщо
+      // вони обидві вже належали активному замовленню — це виглядало так,
+      // ніби точки "самі зникають" від випадкового кліку по мапі.
+      if (orderStore.currentOrder && orderStore.currentOrder.order_id) return;
+
       const { lat, lng } = e.latlng;
 
       if (!orderStore.pickupCoords) {
@@ -239,7 +178,6 @@ onMounted(() => {
         orderStore.destinationLocation = '';
         orderStore.pickupCoords = null;
         orderStore.destinationCoords = null;
-        orderStore.selectedZone = 'center';
       }
     });
   }
@@ -323,26 +261,16 @@ watch(
 watch(
   () => orderStore.isBadWeather,
   () => {
-    renderAllZones();
     if (props.role === 'passenger' && markerA && markerB) {
       drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute);
     }
   },
 );
 
-onUnmounted(() => {
-  hubConnection?.off('ZonesUpdated', handleZonesUpdated);
-});
 </script>
 
 <style scoped>
 .map-wrapper { position: relative; width: 100%; height: 350px; margin-top: 15px; border-radius: 8px; overflow: hidden; border: 2px solid #334155; }
 .leaflet-map-container { width: 100%; height: 100%; z-index: 1; }
 .map-hint { position: absolute; top: 10px; right: 10px; background: rgba(15, 23, 42, 0.85); padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #e2e8f0; z-index: 1000; border: 1px solid #475569; }
-.ai-legend { position: absolute; bottom: 10px; left: 10px; background: rgba(15, 23, 42, 0.95); padding: 8px; border-radius: 6px; border: 1px solid #38bdf8; z-index: 1000; font-size: 11px; max-width: 180px; }
-.ai-legend h4 { margin: 0 0 5px 0; color: #38bdf8; font-size: 11px; }
-.legend-scale { display: flex; flex-direction: column; gap: 4px; }
-.scale-item { padding: 1px 6px; border-radius: 3px; font-weight: bold; font-size: 10px; text-align: center; }
-.scale-item.red { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid #ef4444; }
-.scale-item.green { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
 </style>

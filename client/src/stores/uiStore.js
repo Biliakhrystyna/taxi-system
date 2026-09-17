@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref } from 'vue';
 
 // Глобальні UI-сповіщення (винесено з orderStore: використовується як
@@ -21,3 +21,10 @@ export const useUiStore = defineStore('ui', () => {
 
   return { showSuccessAlert, showErrorAlert, triggerSuccess, triggerError };
 });
+
+// Без цього Vite оновлює файл стора "на льоту" (HMR), але вже створений
+// в браузері екземпляр лишається зі старими методами/полями — доводилось би
+// щоразу вручну перезавантажувати сторінку після будь-якої зміни в сторі.
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useUiStore, import.meta.hot));
+}

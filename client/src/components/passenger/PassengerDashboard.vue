@@ -103,13 +103,6 @@
         </template>
       </div>
 
-      <div class="form-group mt-4 text-center" v-if="orderStore.pickupLocation && orderStore.destinationLocation">
-        <div class="tag" :class="orderStore.selectedZone === 'outskirts' ? 'bonus-tag' : 'safe-tag'" style="display: inline-block; padding: 6px 12px; font-weight: bold;">
-          <span v-if="orderStore.selectedZone === 'outskirts'">🔥Виявлено зону ДЕФІЦИТУ авто (+50 грн водію)</span>
-          <span v-else>✨  Стандартна зона (Баланс попиту)</span>
-        </div>
-      </div>
-
       <div class="mt-4">
         <button class="btn success-btn w-full" :disabled="!orderStore.pickupLocation || !orderStore.destinationLocation" @click="submitOrder">
           Сформувати замовлення
@@ -154,6 +147,7 @@
 import { ref, onMounted } from 'vue';
 import { useOrderStore } from '../../stores/orderStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useUiStore } from '../../stores/uiStore';
 import { savedCardsApi } from '../../services/savedCardsApi';
 import TaxiMap from '../TaxiMap.vue';
 import AddressAutocomplete from '../common/AddressAutocomplete.vue';
@@ -163,6 +157,7 @@ import type { SavedCard } from '../../types/payment';
 
 const orderStore = useOrderStore();
 const authStore = useAuthStore();
+const uiStore = useUiStore();
 
 const onPickupSelect = (address: GeocodedAddress) => {
   orderStore.pickupLocation = address.label;
@@ -203,9 +198,42 @@ const removeSavedCard = async (id: number) => {
   }
 };
 
+// Формат нової картки (не Luhn-перевірка й не реальний процесинг — свідомо,
+// див. коментар у SavedCardsController.cs): 16 цифр номера, MM/YY не в
+// минулому, 3 цифри CVV. Раніше цього не було зовсім — форма приймала
+// порожні/сміттєві поля так само "успішно", як і коректну картку.
+const validateNewCard = (): string | null => {
+  const digits = orderStore.cardNumber.replace(/\D/g, '');
+  if (digits.length !== 16) return 'Некоректний номер картки: має бути 16 цифр.';
+
+  const match = orderStore.cardExpiry.match(/^(\d{2})\/(\d{2})$/);
+  if (!match) return 'Некоректний термін дії картки: формат MM/YY.';
+
+  const month = parseInt(match[1], 10);
+  const year = 2000 + parseInt(match[2], 10);
+  if (month < 1 || month > 12) return 'Некоректний термін дії картки: місяць має бути 01-12.';
+
+  const now = new Date();
+  const expiryEnd = new Date(year, month, 0);
+  if (expiryEnd < new Date(now.getFullYear(), now.getMonth(), 1)) return 'Термін дії картки вже минув.';
+
+  if (!/^\d{3}$/.test(orderStore.cardCvv)) return 'Некоректний CVV: має бути 3 цифри.';
+
+  return null;
+};
+
 const submitOrder = async () => {
-  const isNewCardToRemember =
-    orderStore.paymentMethod === 'card' && selectedCardId.value === 'new' && rememberCard.value && authStore.currentUser?.email;
+  const isNewCard = orderStore.paymentMethod === 'card' && selectedCardId.value === 'new';
+
+  if (isNewCard) {
+    const validationError = validateNewCard();
+    if (validationError) {
+      uiStore.triggerError(validationError);
+      return;
+    }
+  }
+
+  const isNewCardToRemember = isNewCard && rememberCard.value && authStore.currentUser?.email;
 
   if (isNewCardToRemember) {
     try {
@@ -219,6 +247,7 @@ const submitOrder = async () => {
   }
 
   if (orderStore.isBadWeather) {
+    await orderStore.loadRouteComparison();
     orderStore.showAIWarning = true;
   } else {
     orderStore.createOrder();

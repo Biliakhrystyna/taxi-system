@@ -1,4 +1,4 @@
-import type { LatLng, DemandZoneCircle, MapBounds } from '../../../types/geo';
+import type { LatLng, RadiusZone, MapBounds } from '../../../types/geo';
 
 const EARTH_RADIUS_M = 6371000;
 
@@ -18,16 +18,17 @@ export function haversineDistance(a: LatLng, b: LatLng): number {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h));
 }
 
-/** Фільтрація: чи потрапляє точка в радіус хоча б однієї із зон підвищеного попиту. */
-export function isPointInAnyZone(point: LatLng, zones: DemandZoneCircle[]): boolean {
+/** Фільтрація: чи потрапляє точка в радіус хоча б однієї з кругових областей. */
+export function isPointInAnyZone(point: LatLng, zones: RadiusZone[]): boolean {
   return zones.some((zone) => haversineDistance(point, zone) <= zone.radius);
 }
 
 /**
- * Препроцесинг перед рендером: відкидає зони, чиї центри лежать поза видимою
- * областю карти — уникає зайвого малювання об'єктів поза viewport для великих наборів даних.
+ * Препроцесинг перед рендером: відкидає об'єкти, чиї центри лежать поза
+ * видимою областю карти — уникає зайвого малювання поза viewport для
+ * великих наборів геоданих.
  */
-export function filterZonesWithinBounds(zones: DemandZoneCircle[], bounds: MapBounds): DemandZoneCircle[] {
+export function filterZonesWithinBounds(zones: RadiusZone[], bounds: MapBounds): RadiusZone[] {
   return zones.filter(
     (zone) =>
       zone.lat <= bounds.north && zone.lat >= bounds.south && zone.lng <= bounds.east && zone.lng >= bounds.west,
