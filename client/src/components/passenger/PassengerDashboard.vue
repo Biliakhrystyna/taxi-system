@@ -13,12 +13,22 @@
 
       <div class="form-group">
         <label>📍 Звідки (Точка А):</label>
-        <input type="text" v-model="orderStore.pickupLocation" placeholder="Встановіть перший клік на мапі" class="form-input" readonly />
+        <AddressAutocomplete
+          :model-value="orderStore.pickupLocation"
+          placeholder="Введіть вулицю або клікніть на мапі"
+          @update:model-value="orderStore.pickupLocation = $event"
+          @select="onPickupSelect"
+        />
       </div>
 
       <div class="form-group mt-3">
         <label>🏁 Куди (Точка B):</label>
-        <input type="text" v-model="orderStore.destinationLocation" placeholder="Встановіть другий клік на мапі" class="form-input" readonly />
+        <AddressAutocomplete
+          :model-value="orderStore.destinationLocation"
+          placeholder="Введіть вулицю або клікніть на мапі"
+          @update:model-value="orderStore.destinationLocation = $event"
+          @select="onDestinationSelect"
+        />
       </div>
 
       <div class="form-group mt-3">
@@ -43,36 +53,58 @@
       </div>
 
       <div v-if="orderStore.paymentMethod === 'card'" class="form-group mt-3" style="background: rgba(30, 41, 59, 0.6); padding: 15px; border-radius: 8px; border: 1px solid #475569;">
-        <div class="form-group">
-          <label>Номер картки:</label>
-          <input type="text" v-model="orderStore.cardNumber" placeholder="4441 4000 0000 0000" maxlength="19" class="form-input" style="letter-spacing: 2px; text-align: center;" />
+
+        <div v-if="savedCards.length" style="margin-bottom: 14px;">
+          <label style="display: block; margin-bottom: 6px;">💳 Збережені картки:</label>
+
+          <label
+            v-for="card in savedCards"
+            :key="card.id"
+            style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer;"
+          >
+            <span style="display: flex; align-items: center; gap: 8px; color: #e2e8f0; font-size: 13px;">
+              <input type="radio" :value="card.id" v-model="selectedCardId" />
+              {{ card.masked_number }} (до {{ card.expiry }})
+            </span>
+            <button type="button" class="btn reset-btn" style="padding: 4px 8px; font-size: 11px;" @click.stop.prevent="removeSavedCard(card.id)">✕</button>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 8px; color: #e2e8f0; font-size: 13px; cursor: pointer;">
+            <input type="radio" value="new" v-model="selectedCardId" />
+            ➕ Нова картка
+          </label>
         </div>
 
-        <div style="display: flex; gap: 10px; margin-top: 12px;">
-          <div class="form-group" style="flex: 1;">
-            <label>Термін дії:</label>
-            <input type="text" v-model="orderStore.cardExpiry" placeholder="MM/YY" maxlength="5" class="form-input" style="text-align: center;" />
+        <template v-if="selectedCardId === 'new'">
+          <div class="form-group">
+            <label>Номер картки:</label>
+            <input type="text" v-model="orderStore.cardNumber" placeholder="4441 4000 0000 0000" maxlength="19" class="form-input" style="letter-spacing: 2px; text-align: center;" />
           </div>
-          <div class="form-group" style="flex: 1;">
-            <label>CVC/CVV:</label>
-            <input type="password" v-model="orderStore.cardCvv" placeholder="•••" maxlength="3" class="form-input" style="text-align: center; letter-spacing: 3px;" />
+
+          <div style="display: flex; gap: 10px; margin-top: 12px;">
+            <div class="form-group" style="flex: 1;">
+              <label>Термін дії:</label>
+              <input type="text" v-model="orderStore.cardExpiry" placeholder="MM/YY" maxlength="5" class="form-input" style="text-align: center;" />
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>CVC/CVV:</label>
+              <input type="password" v-model="orderStore.cardCvv" placeholder="•••" maxlength="3" class="form-input" style="text-align: center; letter-spacing: 3px;" />
+            </div>
           </div>
-        </div>
 
-        <div v-if="orderStore.cardNumber && orderStore.cardNumber.length >= 16 && orderStore.cardExpiry.length >= 5" class="mt-3 text-center" style="font-size: 11px; color: #10b981; font-weight: bold;">
-          ✅ Картку та платіжні дані успішно верифіковано
-        </div>
-      </div>
+          <label style="display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: #e2e8f0; cursor: pointer;">
+            <input type="checkbox" v-model="rememberCard" />
+            💾 Запам'ятати цю картку для наступного разу
+          </label>
 
-      <div class="form-group mt-4 text-center" v-if="orderStore.pickupLocation && orderStore.destinationLocation">
-        <div class="tag" :class="orderStore.selectedZone === 'outskirts' ? 'bonus-tag' : 'safe-tag'" style="display: inline-block; padding: 6px 12px; font-weight: bold;">
-          <span v-if="orderStore.selectedZone === 'outskirts'">🔥Виявлено зону ДЕФІЦИТУ авто (+50 грн водію)</span>
-          <span v-else>✨  Стандартна зона (Баланс попиту)</span>
-        </div>
+          <div v-if="orderStore.cardNumber && orderStore.cardNumber.length >= 16 && orderStore.cardExpiry.length >= 5" class="mt-3 text-center" style="font-size: 11px; color: #10b981; font-weight: bold;">
+            ✅ Картку та платіжні дані успішно верифіковано
+          </div>
+        </template>
       </div>
 
       <div class="mt-4">
-        <button class="btn success-btn w-full" :disabled="!orderStore.pickupLocation || !orderStore.destinationLocation" @click="orderStore.isBadWeather ? (orderStore.showAIWarning = true) : orderStore.createOrder()">
+        <button class="btn success-btn w-full" :disabled="!orderStore.pickupLocation || !orderStore.destinationLocation" @click="submitOrder">
           Сформувати замовлення
         </button>
         <p v-if="!orderStore.pickupLocation || !orderStore.destinationLocation" class="text-center mt-2" style="font-size: 11px; color: #94a3b8;">
@@ -82,7 +114,7 @@
     </div>
 
     <div v-if="orderStore.currentOrder && orderStore.currentOrder.order_id" class="active-order-box">
-      <h3>Статус замовлення: <span class="badge" :class="orderStore.currentOrder.current_status">{{ orderStore.currentOrder.current_status }}</span></h3>
+      <h3>Статус замовлення: <span class="badge" :class="orderStore.currentOrder.current_status">{{ translateOrderStatus(orderStore.currentOrder.current_status) }}</span></h3>
       <p><strong>Звідки (А):</strong> {{ orderStore.currentOrder.pickup_location }}</p>
       <p><strong>Куди (B):</strong> {{ orderStore.currentOrder.destination }}</p>
       <p><strong>Вартість поїздки:</strong> <span class="price-text">{{ orderStore.currentOrder.estimated_cost }} грн</span></p>
@@ -94,9 +126,17 @@
       </p>
 
       <div class="tags-container">
-        <span v-if="orderStore.currentOrder.safe_route_applied" class="tag safe-tag"> Без配чний ШІ-маршрут активовано</span>
+        <span v-if="orderStore.currentOrder.safe_route_applied" class="tag safe-tag">🛡️ Безпечний ШІ-маршрут активовано</span>
       </div>
       <p v-if="orderStore.currentOrder.driver_name" style="color: #000000; margin-top: 10px;">👨‍✈️ Призначений водій: {{ orderStore.currentOrder.driver_name }}</p>
+
+      <button
+        v-if="['waiting', 'accepted'].includes(orderStore.currentOrder.current_status)"
+        class="btn danger-btn w-full mt-3"
+        @click="orderStore.updateStatus('cancelled')"
+      >
+        ✖️ Скасувати замовлення
+      </button>
     </div>
 
     <TaxiMap role="passenger" :isBadWeather="orderStore.isBadWeather" />
@@ -104,8 +144,113 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { useOrderStore } from '../../stores/orderStore';
+import { useAuthStore } from '../../stores/authStore';
+import { useUiStore } from '../../stores/uiStore';
+import { savedCardsApi } from '../../services/savedCardsApi';
 import TaxiMap from '../TaxiMap.vue';
+import AddressAutocomplete from '../common/AddressAutocomplete.vue';
+import { translateOrderStatus } from '../../utils/orderStatus';
+import type { GeocodedAddress } from '../../types/geo';
+import type { SavedCard } from '../../types/payment';
 
 const orderStore = useOrderStore();
+const authStore = useAuthStore();
+const uiStore = useUiStore();
+
+const onPickupSelect = (address: GeocodedAddress) => {
+  orderStore.pickupLocation = address.label;
+  orderStore.pickupCoords = { lat: address.lat, lng: address.lng };
+};
+
+const onDestinationSelect = (address: GeocodedAddress) => {
+  orderStore.destinationLocation = address.label;
+  orderStore.destinationCoords = { lat: address.lat, lng: address.lng };
+};
+
+// "Збережені картки" — зручність, не реальна платіжна інтеграція (сервер
+// зберігає лише замасковані останні 4 цифри, див. SavedCardsController.cs).
+const savedCards = ref<SavedCard[]>([]);
+const selectedCardId = ref<number | 'new'>('new');
+const rememberCard = ref(false);
+
+const loadSavedCards = async () => {
+  if (!authStore.currentUser?.email) return;
+  try {
+    savedCards.value = await savedCardsApi.list(authStore.currentUser.email);
+    if (savedCards.value.length > 0) selectedCardId.value = savedCards.value[0].id;
+  } catch {
+    savedCards.value = [];
+  }
+};
+
+onMounted(loadSavedCards);
+
+const removeSavedCard = async (id: number) => {
+  if (!authStore.currentUser?.email) return;
+  try {
+    await savedCardsApi.remove(id, authStore.currentUser.email);
+    savedCards.value = savedCards.value.filter((c) => c.id !== id);
+    if (selectedCardId.value === id) selectedCardId.value = 'new';
+  } catch {
+    // Не вдалось видалити — картка лишиться в списку до перезавантаження сторінки.
+  }
+};
+
+// Формат нової картки (не Luhn-перевірка й не реальний процесинг — свідомо,
+// див. коментар у SavedCardsController.cs): 16 цифр номера, MM/YY не в
+// минулому, 3 цифри CVV. Раніше цього не було зовсім — форма приймала
+// порожні/сміттєві поля так само "успішно", як і коректну картку.
+const validateNewCard = (): string | null => {
+  const digits = orderStore.cardNumber.replace(/\D/g, '');
+  if (digits.length !== 16) return 'Некоректний номер картки: має бути 16 цифр.';
+
+  const match = orderStore.cardExpiry.match(/^(\d{2})\/(\d{2})$/);
+  if (!match) return 'Некоректний термін дії картки: формат MM/YY.';
+
+  const month = parseInt(match[1], 10);
+  const year = 2000 + parseInt(match[2], 10);
+  if (month < 1 || month > 12) return 'Некоректний термін дії картки: місяць має бути 01-12.';
+
+  const now = new Date();
+  const expiryEnd = new Date(year, month, 0);
+  if (expiryEnd < new Date(now.getFullYear(), now.getMonth(), 1)) return 'Термін дії картки вже минув.';
+
+  if (!/^\d{3}$/.test(orderStore.cardCvv)) return 'Некоректний CVV: має бути 3 цифри.';
+
+  return null;
+};
+
+const submitOrder = async () => {
+  const isNewCard = orderStore.paymentMethod === 'card' && selectedCardId.value === 'new';
+
+  if (isNewCard) {
+    const validationError = validateNewCard();
+    if (validationError) {
+      uiStore.triggerError(validationError);
+      return;
+    }
+  }
+
+  const isNewCardToRemember = isNewCard && rememberCard.value && authStore.currentUser?.email;
+
+  if (isNewCardToRemember) {
+    try {
+      const saved = await savedCardsApi.add(authStore.currentUser!.email, orderStore.cardNumber, orderStore.cardExpiry);
+      savedCards.value.unshift(saved);
+      selectedCardId.value = saved.id;
+      rememberCard.value = false;
+    } catch {
+      // Не вдалось зберегти картку — не блокуємо через це створення замовлення.
+    }
+  }
+
+  if (orderStore.isBadWeather) {
+    await orderStore.loadRouteComparison();
+    orderStore.showAIWarning = true;
+  } else {
+    orderStore.createOrder();
+  }
+};
 </script>

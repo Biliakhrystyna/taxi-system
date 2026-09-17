@@ -5,46 +5,47 @@ using TaxiSystem.Api.Services;
 namespace TaxiSystem.Api.BackgroundServices;
 
 /// <summary>
-/// Фоновий сервіс ASP.NET Core (вимога ТЗ): раз на хвилину перераховує зони
-/// підвищеного попиту та штовхає оновлення всім підключеним клієнтам через
-/// SignalR-хаб OrderHub. Заміняє клієнтський Math.random() при монтуванні
-/// карти на серверний періодичний перерахунок.
+/// Фоновий сервіс ASP.NET Core  раз на хвилину опитує Open-Meteo
+/// про поточну небезпеку на дорозі для опорної точки й штовхає результат
+/// усім підключеним клієнтам через SignalR-хаб OrderHub. Опитування
+/// Open-Meteo  —  це періодичний push.
+///
 /// </summary>
 public class DemandZoneCalculatorService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
 
-    private readonly DemandZoneStore _zoneStore;
+    private readonly OpenMeteoClient _openMeteo;
     private readonly IHubContext<OrderHub> _hubContext;
     private readonly ILogger<DemandZoneCalculatorService> _logger;
 
     public DemandZoneCalculatorService(
-        DemandZoneStore zoneStore,
+        OpenMeteoClient openMeteo,
         IHubContext<OrderHub> hubContext,
         ILogger<DemandZoneCalculatorService> logger)
     {
-        _zoneStore = zoneStore;
+        _openMeteo = openMeteo;
         _hubContext = hubContext;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Перший набір зон одразу при старті сервера, щоб не чекати хвилину
+        // Перший прогноз одразу при старті сервера, щоб не чекати хвилину
         // до першого підключення клієнта.
-        await RecalculateAndBroadcastAsync(stoppingToken);
+        await BroadcastWeatherAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(Interval);
         while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
         {
-            await RecalculateAndBroadcastAsync(stoppingToken);
+            await BroadcastWeatherAsync(stoppingToken);
         }
     }
 
-    private async Task RecalculateAndBroadcastAsync(CancellationToken ct)
+    private async Task BroadcastWeatherAsync(CancellationToken ct)
     {
-        var zones = _zoneStore.Regenerate();
-        _logger.LogInformation("Перераховано {Count} зон попиту", zones.Count);
-        await _hubContext.Clients.All.SendAsync("ZonesUpdated", zones, ct);
+        var weather = await _openMeteo.GetHazardForecastAsync(MapDefaults.LvivLat, MapDefaults.LvivLng, ct);
+        _logger.LogInformation("Погода (опорна точка): {Hazard} — {Reason}", weather.HazardLevel, weather.Reason);
+        await _hubContext.Clients.All.SendAsync("WeatherUpdated", weather, ct);
     }
 }

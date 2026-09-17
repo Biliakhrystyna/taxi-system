@@ -1,16 +1,19 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useAuthStore } from './authStore';
 import { useUiStore } from './uiStore';
 import { orderApi } from '../services/orderApi';
 import { weatherApi } from '../services/weatherApi';
+import { routingApi } from '../services/routingApi';
 import { ensureOrderHubConnected } from '../services/signalr/orderHubConnection';
 
-// Замовлення, тариф (рахує тепер сервер), ШІ-зони та історія поїздок —
-// REST + SignalR (OrderHub) до ASP.NET Core, а не Firestore.
 export const useOrderStore = defineStore('order', () => {
   const pickupLocation = ref('');
   const destinationLocation = ref('');
+  /** @type {import('vue').Ref<import('../types/geo').LatLng | null>} */
+  const pickupCoords = ref(null);
+  /** @type {import('vue').Ref<import('../types/geo').LatLng | null>} */
+  const destinationCoords = ref(null);
   const carClass = ref('comfort');
 
   const paymentMethod = ref('cash');
@@ -23,9 +26,10 @@ export const useOrderStore = defineStore('order', () => {
   /** @type {import('vue').Ref<import('../types/order').ApiOrder | null>} */
   const currentOrder = ref(null);
   const isBadWeather = ref(false);
-  const selectedZone = ref('center');
   const showAIWarning = ref(false);
   const useSafeRoute = ref(false);
+  /** @type {import('vue').Ref<{standardKm: number|null, standardTurns: number|null, safeKm: number|null, safeTurns: number|null}|null>} */
+  const routeComparison = ref(null);
 
   /** @type {import('vue').Ref<import('../types/order').ApiOrder[]>} */
   const passengerTrips = ref([]);
@@ -34,7 +38,6 @@ export const useOrderStore = defineStore('order', () => {
   const totalTripsCounter = ref(0);
 
   // email/роль поточного користувача — потрібні всередині SignalR-хендлера,
-  // куди authStore напряму не передається (щоб не зв'язувати стори зайвим імпортом).
   let sessionEmail = null;
   let sessionRole = null;
 
@@ -57,6 +60,8 @@ export const useOrderStore = defineStore('order', () => {
     showAIWarning.value = false;
     pickupLocation.value = '';
     destinationLocation.value = '';
+    pickupCoords.value = null;
+    destinationCoords.value = null;
   };
 
   const refreshHistory = async () => {
@@ -69,36 +74,53 @@ export const useOrderStore = defineStore('order', () => {
     }
   };
 
-  // Push із SignalR OrderHub. Сервер шле подію ВСІМ клієнтам — тут фільтруємо,
-  // чи вона взагалі стосується поточного користувача (той самий глобальний
-  // "живий" заказ, що й раніше, тому водії бачать усі, пасажири — лише свої).
+
   const handleOrderUpdated = (order) => {
     if (!sessionEmail) return;
     const isMine = sessionRole === 'driver' || order.passenger_email === sessionEmail;
     if (!isMine) return;
 
-    if (order.current_status === 'completed') {
+    if (order.current_status === 'completed' || order.current_status === 'cancelled') {
       currentOrder.value = null;
-      const isMyCompletedTrip = order.passenger_email === sessionEmail || order.driver_email === sessionEmail;
-      if (isMyCompletedTrip) {
-        totalTripsCounter.value += 1;
+      const isMyTrip = order.passenger_email === sessionEmail || order.driver_email === sessionEmail;
+      if (isMyTrip) {
+        // Лічильник росте лише за завершені поїздки, не за скасовані.
+        if (order.current_status === 'completed') {
+          totalTripsCounter.value += 1;
+        }
         refreshHistory();
       }
     } else {
+      const driverJustAssigned =
+        sessionRole === 'passenger' &&
+        order.current_status === 'accepted' &&
+        order.driver_name &&
+        currentOrder.value?.current_status !== 'accepted';
+
       currentOrder.value = order;
+
+      if (driverJustAssigned) {
+        useUiStore().triggerSuccess(`🚖 Водія призначено: ${order.driver_name}!`);
+      }
     }
   };
 
-  // Предиктивний аналіз погоди через Open-Meteo — початкове значення перемикача
-  // при вході в застосунок. Ручний тумблер (WeatherControls.vue) лишається як
-  // свідомо підписаний demo-режим для контрольованої демонстрації на захисті.
-  const fetchWeatherHazard = async () => {
+  // Аналіз погоди через Open-Meteo для конкретної точки 
+  const fetchWeatherHazard = async (lat, lng) => {
     try {
-      const forecast = await weatherApi.getForecast();
+      const forecast = lat !== undefined && lng !== undefined
+        ? await weatherApi.getForecast(lat, lng)
+        : await weatherApi.getForecast();
       isBadWeather.value = forecast.hazard_level === 'HIGH';
     } catch {
-      // Бекенд/Open-Meteo недоступні — лишаємо ручний перемикач як є.
+
     }
+  };
+
+
+  const handleWeatherUpdated = (forecast) => {
+    if (pickupCoords.value) return;
+    isBadWeather.value = forecast.hazard_level === 'HIGH';
   };
 
   // Ініціалізація сесії після успішного логіну/реєстрації/верифікації:
@@ -123,7 +145,7 @@ export const useOrderStore = defineStore('order', () => {
         passengerTrips.value = history;
       }
     } catch {
-      // Бекенд недоступний — стартуємо з порожнім станом, а не валимо весь логін.
+     
     }
 
     fetchWeatherHazard();
@@ -132,24 +154,38 @@ export const useOrderStore = defineStore('order', () => {
       const connection = await ensureOrderHubConnected();
       connection.off('OrderUpdated');
       connection.on('OrderUpdated', handleOrderUpdated);
+      connection.off('WeatherUpdated');
+      connection.on('WeatherUpdated', handleWeatherUpdated);
     } catch {
       // Без SignalR застосунок лишається робочим на REST, просто без realtime-оновлень.
     }
   };
 
-  // ЛОГІКА ШІ ТА РОЗРАХУНКУ ТАРИФУ
-  const checkOrderConditions = (zone) => {
-    selectedZone.value = zone;
-    destinationLocation.value = zone === 'center' ? 'Львів, Площа Ринок, 1' : 'Львів, Сихів (вул. Зубрівська, 12)';
-    if (isBadWeather.value) {
-      showAIWarning.value = true;
-    } else {
-      createOrder();
+
+  const loadRouteComparison = async () => {
+    routeComparison.value = null;
+    if (!pickupCoords.value || !destinationCoords.value) return;
+
+    try {
+      const [standard, safe] = await Promise.all([
+        routingApi.getRoute(pickupCoords.value, destinationCoords.value),
+        routingApi.getSafeRoute(pickupCoords.value, destinationCoords.value),
+      ]);
+
+      routeComparison.value = {
+        standardKm: standard ? standard.distance_meters / 1000 : null,
+        standardTurns: standard ? standard.turn_count : null,
+        safeKm: safe ? safe.distance_meters / 1000 : null,
+        safeTurns: safe ? safe.turn_count : null,
+      };
+    } catch {
+      routeComparison.value = null;
     }
   };
 
   const createOrder = async () => {
     const authStore = useAuthStore();
+    const uiStore = useUiStore();
     showAIWarning.value = false;
 
     try {
@@ -159,12 +195,15 @@ export const useOrderStore = defineStore('order', () => {
         destination: destinationLocation.value,
         car_class: carClass.value,
         payment_method: paymentMethod.value,
-        zone: selectedZone.value,
         is_bad_weather: isBadWeather.value,
         safe_route_applied: useSafeRoute.value,
+        pickup_lat: pickupCoords.value?.lat ?? null,
+        pickup_lng: pickupCoords.value?.lng ?? null,
+        destination_lat: destinationCoords.value?.lat ?? null,
+        destination_lng: destinationCoords.value?.lng ?? null,
       });
 
-      // Тариф і бонус тепер рахує сервер — просто показуємо, що повернулось.
+      
       currentOrder.value = order;
 
       cardPaymentSuccess.value = false;
@@ -172,11 +211,11 @@ export const useOrderStore = defineStore('order', () => {
       cardExpiry.value = '';
       cardCvv.value = '';
     } catch {
-      alert("Не вдалося створити замовлення. Перевірте з'єднання з сервером.");
+      uiStore.triggerError("Не вдалося створити замовлення. Перевірте з'єднання з сервером.");
     }
   };
 
-  // ОНОВЛЕННЯ СТАТУСУ ЗАМОВЛЕННЯ
+  
   const updateStatus = async (newStatus) => {
     if (!currentOrder.value) return;
     const authStore = useAuthStore();
@@ -193,34 +232,49 @@ export const useOrderStore = defineStore('order', () => {
       });
 
       if (newStatus === 'completed') {
+       
         currentOrder.value = null;
-        totalTripsCounter.value += 1;
         useSafeRoute.value = false;
         pickupLocation.value = '';
         destinationLocation.value = '';
+        pickupCoords.value = null;
+        destinationCoords.value = null;
         uiStore.triggerSuccess('Поїздку успішно завершено! Каунтери оновлено.');
+      } else if (newStatus === 'cancelled') {
+        currentOrder.value = null;
+        useSafeRoute.value = false;
+        pickupLocation.value = '';
+        destinationLocation.value = '';
+        pickupCoords.value = null;
+        destinationCoords.value = null;
+        uiStore.triggerSuccess('Замовлення скасовано.');
       } else {
         currentOrder.value = order;
       }
     } catch {
-      alert("Не вдалося оновити статус замовлення. Перевірте з'єднання з сервером.");
+      uiStore.triggerError("Не вдалося оновити статус замовлення. Перевірте з'єднання з сервером.");
     }
   };
 
   // Очищення локально введених точок А/Б перед формуванням нового замовлення.
-  // Не зачіпає вже створене на сервері замовлення (раніше, з єдиним глобальним
-  // Firestore-документом, ця кнопка могла стерти й активне замовлення — тепер,
-  // коли кожне замовлення — реальний рядок у БД, це було б оманливо).
   const resetDemo = () => {
     pickupLocation.value = '';
     destinationLocation.value = '';
+    pickupCoords.value = null;
+    destinationCoords.value = null;
     useSafeRoute.value = false;
   };
 
   return {
-    currentOrder, isBadWeather, selectedZone,
-    showAIWarning, useSafeRoute, passengerTrips, driverTrips, totalTripsCounter,
-    pickupLocation, destinationLocation, carClass, paymentMethod, cardNumber, cardExpiry, cardCvv, isCardPaying, cardPaymentSuccess,
-    toggleWeather, resetSession, subscribeToUserData, checkOrderConditions, createOrder, updateStatus, resetDemo, fetchWeatherHazard
+    currentOrder, isBadWeather,
+    showAIWarning, useSafeRoute, routeComparison, passengerTrips, driverTrips, totalTripsCounter,
+    pickupLocation, destinationLocation, pickupCoords, destinationCoords,
+    carClass, paymentMethod, cardNumber, cardExpiry, cardCvv, isCardPaying, cardPaymentSuccess,
+    toggleWeather, resetSession, subscribeToUserData, createOrder, updateStatus, resetDemo, fetchWeatherHazard, loadRouteComparison
   };
 });
+
+
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useOrderStore, import.meta.hot));
+}

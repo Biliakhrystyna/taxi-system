@@ -14,9 +14,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException("Не задано рядок підключення ConnectionStrings:Default (PostgreSQL).")));
 
-// snake_case всюди (REST-відповіді й SignalR-повідомлення) — щоб зберегти той самий
-// формат полів (order_id, pickup_location, ...), який клієнт уже використовував
-// з Firestore, і не переписувати всі шаблони під camelCase.
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -30,8 +28,15 @@ builder.Services.AddSignalR()
     });
 
 builder.Services.AddHttpClient<OpenMeteoClient>();
+builder.Services.AddHttpClient<OpenRouteServiceClient>();
+builder.Services.AddHttpClient<OpenRouteServiceGeocodingClient>();
+// Nominatim (запасний геокодер) вимагає ідентифікований User-Agent — без
+// нього сервіс може відмовляти в запитах (політика використання OSM).
+builder.Services.AddHttpClient<NominatimGeocodingClient>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TaxiSystemPracticum/1.0 (student practicum project)");
+});
 
-builder.Services.AddSingleton<DemandZoneStore>();
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
 builder.Services.AddHostedService<DemandZoneCalculatorService>();
 

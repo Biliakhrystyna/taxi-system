@@ -1,12 +1,12 @@
-import { defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useOrderStore } from './orderStore';
 import { useUiStore } from './uiStore';
 import { authApi } from '../services/authApi';
 import { ApiError } from '../services/http';
 
-// Автентифікація, роль та реєстраційні дані користувача — тепер через REST
-// до ASP.NET Core (AuthController), а не Firestore.
+// Автентифікація, роль та реєстраційні дані користувача — через REST
+// до ASP.NET Core (AuthController).
 export const useAuthStore = defineStore('auth', () => {
   /** @type {import('vue').Ref<'passenger' | 'driver' | null>} */
   const userRole = ref(null);
@@ -32,6 +32,19 @@ export const useAuthStore = defineStore('auth', () => {
     orderStore.resetSession();
 
     if (!emailInput.value || !passwordInput.value) return;
+
+    if (isSignUp.value) {
+      if (passwordInput.value.length < 8) {
+        uiStore.triggerError('Некоректний ввід: пароль має містити щонайменше 8 символів.');
+        return;
+      }
+
+      const phoneDigits = phoneInput.value.replace(/\D/g, '');
+      if (phoneDigits.length !== 10) {
+        uiStore.triggerError('Некоректний ввід: номер телефону має містити 10 цифр.');
+        return;
+      }
+    }
 
     try {
       if (isSignUp.value) {
@@ -75,9 +88,9 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       if (err instanceof ApiError) {
         // Сервер уже повертає людяний текст (409/401/400) — показуємо як є.
-        alert(err.message || 'Помилка автентифікації.');
+        uiStore.triggerError(err.message || 'Помилка автентифікації.');
       } else {
-        alert("Сталася помилка з'єднання з сервером. Перевірте, чи запущений бекенд (npm run у server/TaxiSystem.Api).");
+        uiStore.triggerError("Сталася помилка з'єднання з сервером. Перевірте, чи запущений бекенд (dotnet run у server/TaxiSystem.Api).");
       }
     }
   };
@@ -119,3 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
     handleAuthSubmit, verifyDriverDocuments, logout
   };
 });
+
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useAuthStore, import.meta.hot));
+}

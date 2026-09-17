@@ -60,7 +60,7 @@ public class AuthController : ControllerBase
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email && u.Role == request.Role);
         if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
-            return Unauthorized("Невірний email, пароль або роль.");
+            return Unauthorized("Невірний email або пароль.");
         }
 
         return Ok(ToResponse(user));

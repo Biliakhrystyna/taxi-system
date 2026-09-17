@@ -6,7 +6,7 @@
 - **Сервер:** ASP.NET Core Web API (у розробці) + SignalR + BackgroundService
 - **Зовнішні сервіси:** Open-Meteo REST API (прогноз погоди)
 - **Безпека:** хешування паролів BCrypt
-- **Методологія розробки:** Kanban (дошка задач — див. `docs/kanban-board.md`)
+- **Методологія розробки:** Kanban 
 - **VCS:** Git / GitHub
 
 ## Структура репозиторію
@@ -25,4 +25,4 @@ npm install
 npm run dev
 ```
 
-Бекенд (`server/`) буде додано поетапно — див. `docs/ARCHITECTURE.md` та `docs/kanban-board.md`.
+

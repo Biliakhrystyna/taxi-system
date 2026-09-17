@@ -1,5 +1,5 @@
 import { http } from './http';
-import type { ApiOrder, DemandZoneName, OrderStatus } from '../types/order';
+import type { ApiOrder, OrderStatus } from '../types/order';
 import type { UserRole } from '../types/user';
 
 export interface CreateOrderPayload {
@@ -8,9 +8,12 @@ export interface CreateOrderPayload {
   destination: string;
   car_class: string;
   payment_method: 'cash' | 'card';
-  zone: DemandZoneName;
   is_bad_weather: boolean;
   safe_route_applied: boolean;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  destination_lat?: number | null;
+  destination_lng?: number | null;
 }
 
 export interface UpdateOrderStatusPayload {

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxiSystem.Api.Data;
@@ -11,9 +12,11 @@ using TaxiSystem.Api.Data;
 namespace TaxiSystem.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260916001156_AddSavedCards")]
+    partial class AddSavedCards
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -54,6 +57,9 @@ namespace TaxiSystem.Api.Migrations
                     b.Property<int>("EstimatedCost")
                         .HasColumnType("integer");
 
+                    b.Property<int>("MotivationBonus")
+                        .HasColumnType("integer");
+
                     b.Property<string>("PassengerEmail")
                         .IsRequired()
                         .HasColumnType("text");
@@ -78,6 +84,10 @@ namespace TaxiSystem.Api.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<string>("WeatherHazardLevel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Zone")
                         .IsRequired()
                         .HasColumnType("text");
 

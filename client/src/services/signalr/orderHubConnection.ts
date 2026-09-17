@@ -14,8 +14,8 @@ function getConnection(): signalR.HubConnection {
   return connection;
 }
 
-/** Один спільний конект на весь застосунок — і orderStore (OrderUpdated),
- * і TaxiMap.vue (ZonesUpdated) підписуються на той самий екземпляр. */
+/** Один спільний конект на весь застосунок — orderStore підписується на нього
+ * (OrderUpdated, WeatherUpdated). */
 export function ensureOrderHubConnected(): Promise<signalR.HubConnection> {
   const conn = getConnection();
 

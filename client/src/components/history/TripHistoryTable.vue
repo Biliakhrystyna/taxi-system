@@ -28,7 +28,7 @@
           </td>
 
           <td>{{ trip.safe_route_applied ? 'Захист' : 'Стандарт' }}</td>
-          <td><span class="badge completed">Завершено</span></td>
+          <td><span class="badge" :class="trip.current_status">{{ translateOrderStatus(trip.current_status) }}</span></td>
         </tr>
       </tbody>
     </table>
@@ -38,6 +38,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '../../stores/authStore';
 import { useOrderStore } from '../../stores/orderStore';
+import { translateOrderStatus } from '../../utils/orderStatus';
 
 const authStore = useAuthStore();
 const orderStore = useOrderStore();

@@ -4,12 +4,16 @@
       🎉 {{ uiStore.showSuccessAlert }}
     </div>
 
+    <div v-if="uiStore.showErrorAlert" class="global-alert error-alert">
+      ⚠️ {{ uiStore.showErrorAlert }}
+    </div>
+
     <header class="app-header">
       <h1>🚖 Система таксі перевезень</h1>
       <button v-if="authStore.authState === 'main_app'" class="btn logout-btn" @click="authStore.logout">🚪 Вийти з акаунту</button>
     </header>
 
-    <p class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
+    <p v-if="!authStore.isSignUp" class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
 
     <RoleSelector v-if="authStore.authState === 'role_selection'" />
 
@@ -23,7 +27,7 @@
 
       <div class="user-profile-banner">
         <span>👤 Користувач: <strong>{{ authStore.currentUser?.first_name }} {{ authStore.currentUser?.last_name }}</strong></span>
-        <span class="counter-badge">📊 Ваш особистий лічильник поїздок в базі: <strong>{{ orderStore.totalTripsCounter }}</strong></span>
+        <span class="counter-badge">📊 Ваш особистий лічильник поїздок: <strong>{{ orderStore.totalTripsCounter }}</strong></span>
       </div>
 
       <div class="main-grid">
@@ -57,7 +61,7 @@ const orderStore = useOrderStore();
 const uiStore = useUiStore();
 
 onMounted(() => {
-  // Якщо є збережені стани, можемо ініціалізувати
+  
 });
 </script>
 
@@ -65,15 +69,14 @@ onMounted(() => {
 body {
   font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-  /* Фото тла з яскравим проявленням текстури дороги */
   background-image: linear-gradient(rgba(11, 15, 25, 0.40), rgba(11, 15, 25, 0.55)), url('./assets/taxi_background.jpg');
 
-  background-size: cover;          /* Розтягує картинку на весь екран */
-  background-position: center;     /* Центрує текстуру розмітки */
+  background-size: cover;          
+  background-position: right center; 
   background-attachment: fixed;    /* Залишає тло нерухомим при прокручуванні */
   background-repeat: no-repeat;
 
-  color: #f8fafc; /* Білий колір для загального тексту поза картками */
+  color: #f8fafc; 
   margin: 0;
   padding: 16px 20px 20px;
 }
@@ -84,14 +87,13 @@ body {
   position: relative;
 }
 
-/* 🏢 ШАПКА ПЛАТФОРМИ — заголовок завжди зверху й по центру, на будь-якому екрані */
 .app-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  border-bottom: 3px solid #eab308; /* Фірмовий жовтий бордюр */
+  border-bottom: 3px solid #eab308;
   padding: 12px 16px 16px;
   margin-bottom: 18px;
   position: relative;
@@ -99,17 +101,17 @@ body {
 }
 .app-header h1 {
   margin: 0;
-  color: #eab308; /* Жовтий титул */
+  color: #eab308;
   font-size: 22px;
-  font-weight: 900; /* Максимально жирний шрифт */
-  text-transform: uppercase; /* Тільки великі літери */
-  letter-spacing: 1px; /* Сучасний розріджений інтервал */
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   text-shadow: 0 0 15px rgba(234, 179, 8, 0.3);
 }
 .logout-btn {
   background: #000000;
   color: #eab308;
-  border: 2px solid #eab308; /* Жовтий обідок кнопки під колір теми */
+  border: 2px solid #eab308; 
   font-weight: bold;
   font-size: 12px;
   padding: 8px 16px;
@@ -125,8 +127,6 @@ body {
   border-color: #000000;
 }
 
-/* Підпис розробника — фіксований у нижньому лівому куті екрана, дзеркально
-   до напису "TAXI" у нижньому правому куті фонового фото. */
 .dev-credit {
   position: fixed;
   left: 16px;
@@ -150,41 +150,56 @@ body {
   .dev-credit { left: 24px; bottom: 18px; font-size: 13px; }
 }
 
-/* 🖨️ НОВИЙ СТИЛЬ КАРТОК: ЖОВТИЙ ФОН, ЧОРНИЙ ОБІДОК, ЧОРНИЙ ШРИФТ */
+@media (min-width: 1024px) {
+  .auth-card {
+    max-width: 560px;
+    margin-right: auto;
+  }
+}
+
+.auth-card {
+  margin-top: 90px;
+}
+
+.auth-card.login-card {
+  margin-top: 20px;
+}
+
+
 .auth-card, .screen-card {
-  background: #eab308; /* Фірмовий насичений жовтий */
-  color: #000000;      /* Текст всередині карток тепер СУТO ЧОРНИЙ */
+  background: #eab308; 
+  color: #000000;      
   padding: 25px;
   border-radius: 12px;
-  border: 3px solid #000000; /* Жирний чорний обідок */
+  border: 3px solid #000000; 
   box-shadow: 0 15px 25px rgba(0, 0, 0, 0.6);
 }
 .auth-card h2, .screen-card h2 {
   margin-top: 0;
   font-size: 22px;
-  color: #000000 !important; /* Назви вікон тепер теж строго чорні */
-  border-bottom: 2px solid #000000; /* Чорна лінія розподілу */
+  color: #000000 !important; 
+  border-bottom: 2px solid #000000; 
   padding-bottom: 12px;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-/* Корекція кольору заголовків у різних боксах */
+
 .passenger-box h2, .driver-box h2, .auth-card h2 { color: #000000 !important; }
 
 .subtitle { color: #000000; font-size: 14px; margin-bottom: 25px; font-weight: 600; }
 .back-link { background: none; border: none; color: #000000; font-weight: bold; cursor: pointer; font-size: 13px; margin-bottom: 15px; display: block; }
 .back-link:hover { text-decoration: underline; }
 
-/* 🌤️ БЛОК СИМУЛЯЦІЇ ПОГОДИ */
+
 .weather-simulator span {
   color: #ffffff !important;
   font-weight: 700;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
-/* 🕹️ КНОПКИ ВИБОРУ РОЛЕЙ */
+/*кнопки вибору ролей*/
 .btn-group-row { display: flex; gap: 20px; justify-content: center; }
 .passenger-btn-big {
   background: #ffffff;
@@ -212,12 +227,12 @@ body {
 }
 .driver-btn-big:hover { background: #1e293b; transform: translateY(-2px); }
 
-/* 📋 ФОРМИ, ТЕКСТИ ТА ІНПУТИ ВСЕРЕДИНІ ЖОВТИХ КАРТОК */
+
 .auth-form, .booking-form { display: flex; flex-direction: column; gap: 15px; text-align: left; background: none; border: none; padding: 0; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 12px; color: #000000; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* Контрастні інпути для зчитування даних */
+
 .form-input, .form-select {
   background: #ffffff;
   border: 2px solid #000000;
@@ -236,7 +251,7 @@ body {
 .form-input:disabled { background: #e2e8f0; color: #ebedef; cursor: not-allowed; border-color: #94a3b8; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 
-/* 💳 КНОПКИ СПОСОБУ ОПЛАТИ */
+/* кнопки способу оплати*/
 .payment-methods .btn {
   background: #eab308 !important;
   color: #000000 !important;
@@ -252,14 +267,14 @@ body {
   border: 3px solid #000000 !important;
 }
 
-/* ⚡ СИСТЕМНІ КНОПКИ */
+
 .btn { padding: 11px 18px; border: none; border-radius: 6px; font-weight: 800; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; text-transform: uppercase; font-size: 13px; }
 
-/* Виправлено: Кнопка відправки форми, коли вона активна/неактивна */
+
 .success-btn { background: #000000; color: #eab308; border: 3px solid #000000; }
 .success-btn:hover:not(:disabled) { background: #1e293b; color: #ffffff; }
 
-/* Виправлено: Стан, коли кнопка верифікації заблокована (Не біла, а строга темно-сіра з контуром) */
+
 .success-btn:disabled {
   background: #374151 !important;
   color: #9ca3af !important;
@@ -280,7 +295,7 @@ body {
 .toggle-auth-text span { color: #000000; cursor: pointer; text-decoration: underline; }
 .auth-form a { color: #000000 !important; text-decoration: underline; }
 
-/* 🛡️ КЕРУВАННЯ МЕТЕОУМОВАМИ */
+
 .env-controls { background: #111827; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #eab308; }
 .env-controls h3 { margin: 0 0 10px 0; font-size: 14px; color: #eab308; text-transform: uppercase; font-weight: bold; }
 .flex-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
@@ -289,12 +304,12 @@ body {
 .user-profile-banner { background: #eab308; color: #000000; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; border: 3px solid #000000; display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
 .counter-badge { background: #000000; padding: 6px 12px; border-radius: 4px; border: 1px solid #000000; color: #eab308; font-weight: bold; }
 
-/* 📦 АКТИВНІ ЗАМОВЛЕННЯ ВСЕРЕДИНІ ЖОВТОЇ КАРТКИ */
+
 .active-order-box { background: #eab308; padding: 18px; border-radius: 8px; margin-top: 15px; border: 2px solid #000000; color: #000000; }
 .active-order-box p, .active-order-box strong { color: #000000; }
 .price-text { font-size: 22px; color: #b45309; font-weight: 900; }
 
-/* 🏷️ ШІ ГЕОФЕНСИНГ БЕЙДЖІ */
+
 .tag {
   padding: 8px 14px;
   border-radius: 6px;
@@ -318,33 +333,32 @@ body {
 }
 .bonus-alert { background: #000000; color: #fde047; padding: 12px; border-radius: 6px; border: 2px solid #000000; font-weight: bold; margin-bottom: 15px; font-size: 13px; text-align: left; }
 
-/* 📸 БІОМЕТРІЯ ТА DRAG & DROP СКАНИ (ФІКС: КРЕМОВО-ЖОВТИЙ КОНТРАСТНИЙ БОКС) */
+
 .upload-zone, .drop-zone {
   border: 3px dashed #000000 !important;
   padding: 25px;
   border-radius: 8px;
   margin: 15px 0;
-  background: #fffbeb !important; /* Ніжно-кремове світле тло для виділення тексту */
+  background: #fffbeb !important; 
   text-align: center;
   color: #000000 !important;
   font-weight: 800 !important;
   font-size: 14px;
 }
 .success-border, .drop-zone.active {
-  background: #fef08a !important; /* Яскравіший жовтий при успішному завантаженні */
+  background: #fef08a !important; 
 }
 
-/* Виправлено: Кнопка Face-API тепер має чіткий шрифт і чорний текст на зеленому підтвердженому стані */
 .auth-card button[style*="color: rgb(52, 211, 153)"],
 .auth-card button[style*="color: #34d399"] {
-  background: #10b981 !important; /* Насичений зелений ШІ-колір */
-  color: #000000 !important;      /* Чорний контрастний шрифт літер */
+  background: #10b981 !important; 
+  color: #000000 !important;      
   border: 3px solid #000000 !important;
   font-weight: 900 !important;
   font-size: 13px !important;
   letter-spacing: 0.5px;
 }
-/* Стартовий стан кнопки Face-API (чорний з жовтим) */
+/*  стан кнопки Face-API  */
 .auth-card button[style*="color: rgb(56, 189, 248)"],
 .auth-card button[style*="color: #38bdf8"] {
   background: #000000 !important;
@@ -353,7 +367,7 @@ body {
   font-weight: 900 !important;
 }
 
-/* 📊 ТАБЛИЦІ ІСТОРІЇ ПОЇЗДОК */
+/* Таблиця історій поїздок*/
 .history-box { margin-top: 25px; }
 .history-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
 .history-table th { background: #000000; padding: 12px; text-align: left; color: #eab308; border-bottom: 2px solid #000000; font-weight: bold; }
@@ -361,12 +375,13 @@ body {
 .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
 .badge.completed { background: #000000; color: #ffffff; border: 1px solid #000000; }
 .badge.waiting { background: #ffffff; color: #000000; border: 2px solid #000000; }
+.badge.cancelled { background: #dc2626; color: #ffffff; border: 1px solid #000000; }
 .no-data { color: #4b5563; padding: 20px; text-align: center; font-size: 13px; font-weight: bold; }
 
-/* 🔔 ГЛОБАЛЬНІ СПОВІЩЕННЯ */
+
 .global-alert { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #000000; color: #eab308; padding: 12px 30px; border-radius: 30px; font-weight: bold; border: 2px solid #eab308; box-shadow: 0 10px 20px rgba(0,0,0,0.5); z-index: 9999; }
 
-/* 🗂️ СІТКА GRID */
+
 .main-grid { display: grid; grid-template-columns: 1fr; gap: 25px; }
 .w-full { width: 100%; }
 .mt-2 { margin-top: 8px; }

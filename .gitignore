@@ -6,6 +6,10 @@ client/dist-ssr
 *.tsbuildinfo
 .eslintcache
 
+# --- Особисті робочі документи (лишаються локально, не в GitHub поки що) ---
+/docs/
+server/README.md
+
 # --- Backend (server/) ---
 server/**/bin/
 server/**/obj/

@@ -3,10 +3,9 @@ export interface LatLng {
   lng: number;
 }
 
-/** Кругова зона попиту на мапі — приходить із сервера (DemandZoneStore) через SignalR. */
-export interface DemandZoneCircle extends LatLng {
-  id: string;
-  /** Радіус зони в метрах. */
+/** Узагальнена кругова область на мапі (координати + радіус у метрах) —
+ * використовується геопросторовим модулем фільтрації (geoFilter.ts). */
+export interface RadiusZone extends LatLng {
   radius: number;
 }
 
@@ -15,4 +14,19 @@ export interface MapBounds {
   south: number;
   east: number;
   west: number;
+}
+
+/** Реальний маршрут по дорогах з бекенду (OpenRouteServiceClient)  */
+export interface SafeRouteResult {
+  points: LatLng[];
+  turn_count: number;
+  distance_meters: number;
+  source: string;
+}
+
+/** Результат гео-пошуку (OpenRouteServiceGeocodingClient) — адреса з координатами. */
+export interface GeocodedAddress {
+  label: string;
+  lat: number;
+  lng: number;
 }

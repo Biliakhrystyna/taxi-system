@@ -1,10 +1,6 @@
 namespace TaxiSystem.Api.Models;
 
-/// <summary>
-/// Пасажир або водій. Email — природний первинний ключ (як і в оригінальному
-/// Firestore-прототипі, де email був id документа) — свідоме спрощення заради
-/// швидкості: без surrogate-id клієнту не треба нічого мапити при переході з Firebase.
-/// </summary>
+
 public class User
 {
     public string Email { get; set; } = string.Empty;
