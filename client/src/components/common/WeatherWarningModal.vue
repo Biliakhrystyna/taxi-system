@@ -8,7 +8,13 @@
       </div>
 
       <p style="color: #e2e8f0; font-size: 14px; line-height: 1.6; text-align: center;">
-        Система виявила <b style="color: #f87171;">сильну зливу та підвищений ризик небезпеки</b> на стандартному шляху. Наш ШІ-алгоритм розрахував альтернативний безпечний маршрут в обхід критичних ділянок дороги.
+        Система виявила <b style="color: #f87171;">небезпечні погодні умови на дорозі</b>{{ orderStore.weatherReason ? ' (' + orderStore.weatherReason + ')' : '' }}.
+        <template v-if="orderStore.routesCoincide">
+          Об'їзду з меншою кількістю поворотів для цієї ділянки не знайдено — стандартний і безпечний маршрут системи збігаються. Попри це, дорога може бути слизькою: керуйте обережно.
+        </template>
+        <template v-else>
+          Розраховано альтернативний маршрут в обхід критичних ділянок дороги.
+        </template>
       </p>
 
       <div style="background: rgba(30, 41, 59, 0.6); padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #334155;">
@@ -18,7 +24,7 @@
             <span style="font-weight: bold;">{{ orderStore.routeComparison.standardKm.toFixed(1) }} км, {{ orderStore.routeComparison.standardTurns }} поворотів</span>
           </div>
           <div style="display: flex; justify-content: space-between; font-size: 13px; color: #f97316;">
-            <span>🛡️ Безпечний ШІ-маршрут:</span>
+            <span>🛡️ Безпечний маршрут:</span>
             <span style="font-weight: bold;">{{ orderStore.routeComparison.safeKm.toFixed(1) }} км, {{ orderStore.routeComparison.safeTurns }} поворотів</span>
           </div>
           <div v-if="orderStore.routeComparison.safeKm > orderStore.routeComparison.standardKm" style="font-size: 12px; color: #94a3b8; margin-top: 6px; text-align: right;">
@@ -31,7 +37,7 @@
             <span style="font-weight: bold;">Найкоротший (Але є ризик злетіти з дороги)</span>
           </div>
           <div style="display: flex; justify-content: space-between; font-size: 13px; color: #f97316;">
-            <span>🛡️ Безпечний ШІ-маршрут:</span>
+            <span>🛡️ Безпечний маршрут:</span>
             <span style="font-weight: bold;">в обхід критичних ділянок</span>
           </div>
         </template>
@@ -39,7 +45,7 @@
 
       <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
         <button class="btn" style="background: #f97316; color: white; font-weight: bold; padding: 12px;" @click="orderStore.useSafeRoute = true; orderStore.showAIWarning = false; orderStore.createOrder();">
-          Активувати безпечний ШІ-маршрут (Рекомендовано)
+          Активувати безпечний маршрут (Рекомендовано)
         </button>
 
         <button class="btn" style="background: rgba(71, 85, 105, 0.3); color: #cbd5e1; border: 1px solid #475569; padding: 10px;" @click="orderStore.useSafeRoute = false; orderStore.showAIWarning = false; orderStore.createOrder();">

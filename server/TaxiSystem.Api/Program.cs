@@ -30,6 +30,7 @@ builder.Services.AddSignalR()
 builder.Services.AddHttpClient<OpenMeteoClient>();
 builder.Services.AddHttpClient<OpenRouteServiceClient>();
 builder.Services.AddHttpClient<OpenRouteServiceGeocodingClient>();
+builder.Services.AddHttpClient<SendGridEmailClient>();
 // Nominatim (запасний геокодер) вимагає ідентифікований User-Agent — без
 // нього сервіс може відмовляти в запитах (політика використання OSM).
 builder.Services.AddHttpClient<NominatimGeocodingClient>(client =>

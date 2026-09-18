@@ -43,21 +43,36 @@ public class OrdersController : ControllerBase
         _ors = ors;
     }
 
+    /// <summary>Орієнтовна ціна — щоб пасажир бачив вартість ДО того, як
+    /// натисне "Сформувати замовлення"/оплату, а не вперше вже після
+    /// бронювання. Та сама формула, що й при реальному створенні замовлення.</summary>
+    [HttpGet("quote")]
+    public async Task<ActionResult<QuoteResponse>> Quote(
+        [FromQuery] string carClass,
+        [FromQuery] bool isBadWeather,
+        [FromQuery] bool safeRouteApplied,
+        [FromQuery] bool safeRouteMatchesStandard,
+        [FromQuery] double? pickupLat,
+        [FromQuery] double? pickupLng,
+        [FromQuery] double? destinationLat,
+        [FromQuery] double? destinationLng)
+    {
+        var estimatedCost = await CalculateEstimatedCostAsync(
+            carClass, isBadWeather, safeRouteApplied, safeRouteMatchesStandard,
+            pickupLat, pickupLng, destinationLat, destinationLng, HttpContext.RequestAborted);
+
+        return Ok(new QuoteResponse(estimatedCost));
+    }
+
     [HttpPost]
     public async Task<ActionResult<OrderResponse>> Create(CreateOrderRequest request)
     {
         var passenger = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.PassengerEmail);
         if (passenger is null) return BadRequest("Пасажира не знайдено.");
 
-        var (baseFare, perKm) = CarClassRates.TryGetValue(request.CarClass, out var rates)
-            ? rates
-            : CarClassRates["comfort"];
-
-        var distanceKm = await ResolveDistanceKmAsync(request, HttpContext.RequestAborted);
-
-        var basePrice = baseFare + perKm * distanceKm;
-        var weatherCoeff = request.IsBadWeather ? (request.SafeRouteApplied ? 1.45 : 1.3) : 1.0;
-        var estimatedCost = (int)Math.Max(MinimumFare, Math.Round(basePrice * weatherCoeff));
+        var estimatedCost = await CalculateEstimatedCostAsync(
+            request.CarClass, request.IsBadWeather, request.SafeRouteApplied, request.SafeRouteMatchesStandard,
+            request.PickupLat, request.PickupLng, request.DestinationLat, request.DestinationLng, HttpContext.RequestAborted);
 
         var paymentMethodLabel = request.PaymentMethod == "card" ? "Картка" : "Готівка";
 
@@ -71,6 +86,10 @@ public class OrdersController : ControllerBase
             PickupLocation = request.PickupLocation,
             Destination = request.Destination,
             CarClass = request.CarClass,
+            PickupLat = request.PickupLat,
+            PickupLng = request.PickupLng,
+            DestinationLat = request.DestinationLat,
+            DestinationLng = request.DestinationLng,
             EstimatedCost = estimatedCost,
             WeatherHazardLevel = request.IsBadWeather ? "HIGH" : "NORMAL",
             CurrentStatus = "waiting",
@@ -92,14 +111,38 @@ public class OrdersController : ControllerBase
     [HttpGet("current")]
     public async Task<ActionResult<OrderResponse?>> GetCurrent([FromQuery] string email, [FromQuery] string role)
     {
-        var query = _db.Orders.Where(o => o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
+        if (role == "driver")
+        {
+            // Власне активне замовлення водія має пріоритет і видиме лише йому —
+            // інші водії не повинні бачити чи чіпати чужий рейс, що вже в роботі.
+            var ownOrder = await _db.Orders
+                .Where(o => o.DriverEmail == email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled")
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync();
 
-        query = role == "driver"
-            ? query
-            : query.Where(o => o.PassengerEmail == email);
+            if (ownOrder is not null) return Ok(ToResponse(ownOrder));
 
-        var order = await query.OrderByDescending(o => o.CreatedAt).FirstOrDefaultAsync();
-        return Ok(order is null ? null : ToResponse(order));
+            // Немає власного рейсу — пропонуємо найстаріше (FIFO) замовлення, що
+            // очікує водія, і лише свого класу авто: водій "lux" не повинен
+            // бачити замовлення класу "econom" і навпаки.
+            var driver = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+            var waitingQuery = _db.Orders.Where(o => o.CurrentStatus == "waiting");
+            if (driver?.DriverCarClass is not null)
+            {
+                waitingQuery = waitingQuery.Where(o => o.CarClass == driver.DriverCarClass);
+            }
+
+            var nextOrder = await waitingQuery.OrderBy(o => o.CreatedAt).FirstOrDefaultAsync();
+            return Ok(nextOrder is null ? null : ToResponse(nextOrder));
+        }
+
+        var passengerOrder = await _db.Orders
+            .Where(o => o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled" && o.PassengerEmail == email)
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        return Ok(passengerOrder is null ? null : ToResponse(passengerOrder));
     }
 
     [HttpGet("history")]
@@ -118,16 +161,36 @@ public class OrdersController : ControllerBase
     [HttpPost("{orderId}/status")]
     public async Task<ActionResult<OrderResponse>> UpdateStatus(string orderId, UpdateOrderStatusRequest request)
     {
+        if (request.NewStatus == "accepted")
+        {
+            // Атомарний UPDATE прямо в БД замість "прочитати в C# → перевірити →
+            // записати": WHERE-умова й запис виконуються однією SQL-операцією,
+            // тож два водії, що одночасно тиснуть "Прийняти" на те саме
+            // замовлення, фізично не можуть обидва пройти перевірку — базі
+            // даних досить власного блокування рядка, гонка неможлива.
+            var rowsUpdated = await _db.Orders
+                .Where(o => o.OrderId == orderId && (o.DriverEmail == null || o.DriverEmail == request.DriverEmail))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.DriverEmail, request.DriverEmail)
+                    .SetProperty(o => o.DriverName, request.DriverName)
+                    .SetProperty(o => o.CurrentStatus, request.NewStatus));
+
+            if (rowsUpdated == 0)
+            {
+                var exists = await _db.Orders.AnyAsync(o => o.OrderId == orderId);
+                return exists ? Conflict("Це замовлення вже прийняв інший водій.") : NotFound();
+            }
+
+            var acceptedOrder = await _db.Orders.AsNoTracking().FirstAsync(o => o.OrderId == orderId);
+            var acceptedResponse = ToResponse(acceptedOrder);
+            await _hub.Clients.All.SendAsync("OrderUpdated", acceptedResponse);
+            return Ok(acceptedResponse);
+        }
+
         var order = await _db.Orders.FirstOrDefaultAsync(o => o.OrderId == orderId);
         if (order is null) return NotFound();
 
         order.CurrentStatus = request.NewStatus;
-
-        if (request.NewStatus == "accepted")
-        {
-            order.DriverEmail = request.DriverEmail;
-            order.DriverName = request.DriverName;
-        }
 
         if (request.NewStatus == "completed")
         {
@@ -152,10 +215,68 @@ public class OrdersController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>Оцінка поїздки — лише пасажир, лише завершеної поїздки, лише
+    /// один раз (щоб не можна було "накрутити" водію рейтинг повторними викликами).</summary>
+    [HttpPost("{orderId}/rate")]
+    public async Task<ActionResult<OrderResponse>> Rate(string orderId, RateOrderRequest request)
+    {
+        if (request.Rating is < 1 or > 5)
+        {
+            return BadRequest("Оцінка має бути від 1 до 5.");
+        }
+
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.OrderId == orderId);
+        if (order is null) return NotFound();
+
+        if (order.PassengerEmail != request.PassengerEmail)
+        {
+            return Unauthorized("Оцінити поїздку може лише пасажир, який нею скористався.");
+        }
+
+        if (order.CurrentStatus != "completed")
+        {
+            return BadRequest("Оцінити можна лише завершену поїздку.");
+        }
+
+        if (order.Rating is not null)
+        {
+            return Conflict("Цю поїздку вже оцінено.");
+        }
+
+        order.Rating = request.Rating;
+        await _db.SaveChangesAsync();
+
+        var response = ToResponse(order);
+        await _hub.Clients.All.SendAsync("OrderUpdated", response);
+
+        return Ok(response);
+    }
+
     private static OrderResponse ToResponse(Order o) => new(
         o.OrderId, o.PassengerEmail, o.PassengerName, o.PickupLocation, o.Destination, o.CarClass,
         o.EstimatedCost, o.WeatherHazardLevel, o.CurrentStatus, o.SafeRouteApplied,
-        o.PaymentMethod, o.PaymentStatus, o.DriverEmail, o.DriverName, o.EndTime);
+        o.PaymentMethod, o.PaymentStatus, o.DriverEmail, o.DriverName, o.EndTime,
+        o.PickupLat, o.PickupLng, o.DestinationLat, o.DestinationLng, o.Rating);
+
+    /// <summary>Спільна формула тарифу для реального створення замовлення й
+    /// попереднього кошторису (Quote) — щоб ціна, яку бачить пасажир ДО
+    /// бронювання, завжди збігалася з тією, що реально спишеться.</summary>
+    private async Task<int> CalculateEstimatedCostAsync(
+        string carClass, bool isBadWeather, bool safeRouteApplied, bool safeRouteMatchesStandard,
+        double? pickupLat, double? pickupLng, double? destinationLat, double? destinationLng, CancellationToken ct)
+    {
+        var (baseFare, perKm) = CarClassRates.TryGetValue(carClass, out var rates)
+            ? rates
+            : CarClassRates["comfort"];
+
+        var distanceKm = await ResolveDistanceKmAsync(pickupLat, pickupLng, destinationLat, destinationLng, ct);
+
+        var basePrice = baseFare + perKm * distanceKm;
+        var safeRouteHasRealDetour = safeRouteApplied && !safeRouteMatchesStandard;
+        var weatherCoeff = isBadWeather ? (safeRouteHasRealDetour ? 1.45 : 1.3) : 1.0;
+
+        return (int)Math.Max(MinimumFare, Math.Round(basePrice * weatherCoeff));
+    }
 
     /// <summary>
     /// Реальна відстань по дорогах через ORS. Якщо координат немає (ручний
@@ -165,10 +286,11 @@ public class OrdersController : ControllerBase
     /// (гаверсинова формула) із коефіцієнтом на типову звивистість міської
     /// дороги — це набагато чесніше за фіксовану ціну незалежно від маршруту.
     /// </summary>
-    private async Task<double> ResolveDistanceKmAsync(CreateOrderRequest request, CancellationToken ct)
+    private async Task<double> ResolveDistanceKmAsync(
+        double? pickupLat, double? pickupLng, double? destinationLat, double? destinationLng, CancellationToken ct)
     {
-        if (request.PickupLat is not double pLat || request.PickupLng is not double pLng ||
-            request.DestinationLat is not double dLat || request.DestinationLng is not double dLng)
+        if (pickupLat is not double pLat || pickupLng is not double pLng ||
+            destinationLat is not double dLat || destinationLng is not double dLng)
         {
             return FallbackDistanceKm;
         }

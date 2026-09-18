@@ -20,6 +20,15 @@ public class OpenMeteoClient
     /// <summary>Температура, нижче якої на дорозі можливий іній/ожеледиця навіть без опадів.</summary>
     private const double FrostTemperatureC = 1.0;
 
+    /// <summary>Скільки 15-хвилинних інтервалів назад перевіряти на "щойно був дощ" —
+    /// асфальт не висихає миттєво, тож навіть якщо опади вже зупинились, дорога
+    /// лишається слизькою ще якийсь час. 8 × 15 хв = 2 години.</summary>
+    private const int PastHazardWindowSlots = 8;
+
+    /// <summary>Мінімальна глибина снігового покриву (м), нижче якої вважаємо, що снігу
+    /// на дорозі фактично немає (округлення/шум даних).</summary>
+    private const double SnowDepthThresholdM = 0.01;
+
     /// <summary>WMO weather_code для замерзаючих опадів (freezing drizzle/rain) — пряма ожеледиця.</summary>
     private static readonly HashSet<int> FreezingPrecipitationCodes = new() { 56, 57, 66, 67 };
 
@@ -51,7 +60,7 @@ public class OpenMeteoClient
     {
         var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
                   $"&longitude={lng.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
-                  "&current=precipitation,temperature_2m,weather_code&minutely_15=precipitation&forecast_days=1&timezone=auto";
+                  "&current=precipitation,temperature_2m,weather_code,snow_depth&minutely_15=precipitation&forecast_days=1&timezone=auto";
 
         try
         {
@@ -68,6 +77,7 @@ public class OpenMeteoClient
             var temperature = current.GetProperty("temperature_2m").GetDouble();
             var weatherCode = current.GetProperty("weather_code").GetInt32();
             var currentTime = current.GetProperty("time").GetString();
+            var snowDepth = current.TryGetProperty("snow_depth", out var snowDepthProp) ? snowDepthProp.GetDouble() : 0;
 
             // "minutely_15" насправді починається з ПІВНОЧІ поточної доби
             // (як і "hourly"), а не з поточного моменту — тож щоб дістати
@@ -90,6 +100,17 @@ public class OpenMeteoClient
 
             var worstCasePrecip = Math.Max(currentPrecipitation, nextHourMax);
 
+            // Асфальт не висихає миттєво: навіть якщо зараз і найближчу годину
+            // опадів немає, дорога могла лишитись мокрою/слизькою після дощу,
+            // що йшов зовсім недавно. Дивимось назад у той самий masив
+            // minutely_15 (без додаткового запиту) — індекси перед startIndex.
+            var pastWindowStart = Math.Max(0, startIndex - PastHazardWindowSlots);
+            var pastPrecipMax = minutelyPrecip
+                .Skip(pastWindowStart)
+                .Take(Math.Max(0, startIndex - pastWindowStart))
+                .DefaultIfEmpty(0)
+                .Max();
+
             // Кілька незалежних причин, чому дорога може бути слизькою — будь-якої
             // з них досить, щоб вважати умови небезпечними (не тільки "йде дощ").
             var reasons = new List<string>();
@@ -98,6 +119,10 @@ public class OpenMeteoClient
             if (temperature <= FrostTemperatureC) reasons.Add("низька температура (ризик інею/льоду)");
             if (worstCasePrecip < HazardThresholdMm && ActivePrecipitationCodes.Contains(weatherCode))
                 reasons.Add("опади за класифікацією погоди (кількість округлилась до 0мм)");
+            if (worstCasePrecip < HazardThresholdMm && pastPrecipMax >= HazardThresholdMm)
+                reasons.Add("дорога ще мокра після нещодавніх опадів");
+            if (snowDepth >= SnowDepthThresholdM)
+                reasons.Add("сніговий покрив на дорозі");
 
             var hazard = reasons.Count > 0 ? "HIGH" : "NORMAL";
             var reasonText = reasons.Count > 0 ? string.Join(", ", reasons) : "без опадів, дорога суха";

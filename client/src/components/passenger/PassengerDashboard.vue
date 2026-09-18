@@ -4,7 +4,7 @@
     <div class="weather-simulator" style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
       <span style="font-size: 13px; color: #94a3b8;">Поточна погода в місті:</span>
       <button type="button" class="btn" :style="orderStore.isBadWeather ? 'background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #f87171;' : 'background: rgba(234, 179, 8, 0.1); border-color: #eab308; color: #fde047;'" @click="orderStore.toggleWeather()">
-        <span v-if="orderStore.isBadWeather">🌧️ Сильна злива (ШІ-захист ON)</span>
+        <span v-if="orderStore.isBadWeather">🌧️ Сильна злива (Безпечний режим ON)</span>
         <span v-else>☀️ Сонячно (Звичайний режим)</span>
       </button>
     </div>
@@ -97,10 +97,15 @@
             💾 Запам'ятати цю картку для наступного разу
           </label>
 
-          <div v-if="orderStore.cardNumber && orderStore.cardNumber.length >= 16 && orderStore.cardExpiry.length >= 5" class="mt-3 text-center" style="font-size: 11px; color: #10b981; font-weight: bold;">
+          <div v-if="isNewCardValid" class="mt-3 text-center" style="font-size: 11px; color: #10b981; font-weight: bold;">
             ✅ Картку та платіжні дані успішно верифіковано
           </div>
         </template>
+      </div>
+
+      <div v-if="orderStore.estimatedPrice !== null" class="form-group mt-3" style="background: rgba(15, 23, 42, 0.4); padding: 10px 14px; border-radius: 8px; border: 1px dashed #475569; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 13px; color: #000000; font-weight: 700;">Орієнтовна вартість поїздки:</span>
+        <span style="font-size: 18px; color: #000000; font-weight: 900;">≈ {{ orderStore.estimatedPrice }} грн</span>
       </div>
 
       <div class="mt-4">
@@ -120,13 +125,13 @@
       <p><strong>Вартість поїздки:</strong> <span class="price-text">{{ orderStore.currentOrder.estimated_cost }} грн</span></p>
       <p><strong>Тип оплати:</strong> {{ orderStore.currentOrder.payment_method || 'Готівка' }}</p>
       <p><strong>Статус транзакції:</strong>
-        <span :style="orderStore.currentOrder.payment_status && orderStore.currentOrder.payment_status.includes('Оплачено') ? 'color: #10b981; font-weight: bold;' : 'color: #ffffff; font-weight: bold;'">
+        <span class="badge" :class="orderStore.currentOrder.payment_status && orderStore.currentOrder.payment_status.includes('Оплачено') ? 'paid' : 'pending'">
           {{ orderStore.currentOrder.payment_status || 'Очікує оплати' }}
         </span>
       </p>
 
       <div class="tags-container">
-        <span v-if="orderStore.currentOrder.safe_route_applied" class="tag safe-tag">🛡️ Безпечний ШІ-маршрут активовано</span>
+        <span v-if="orderStore.currentOrder.safe_route_applied" class="tag safe-tag">🛡️ Безпечний маршрут активовано</span>
       </div>
       <p v-if="orderStore.currentOrder.driver_name" style="color: #000000; margin-top: 10px;">👨‍✈️ Призначений водій: {{ orderStore.currentOrder.driver_name }}</p>
 
@@ -144,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useOrderStore } from '../../stores/orderStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -198,13 +203,35 @@ const removeSavedCard = async (id: number) => {
   }
 };
 
-// Формат нової картки (не Luhn-перевірка й не реальний процесинг — свідомо,
-// див. коментар у SavedCardsController.cs): 16 цифр номера, MM/YY не в
-// минулому, 3 цифри CVV. Раніше цього не було зовсім — форма приймала
-// порожні/сміттєві поля так само "успішно", як і коректну картку.
+// Алгоритм Луна — стандартна контрольна сума номерів карток (не справжній
+// процесинг, лише перевірка формату — див. коментар у SavedCardsController.cs).
+const luhnCheck = (digits: string): boolean => {
+  let sum = 0;
+  let shouldDouble = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = parseInt(digits[i], 10);
+    if (shouldDouble) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    shouldDouble = !shouldDouble;
+  }
+  return sum % 10 === 0;
+};
+
 const validateNewCard = (): string | null => {
-  const digits = orderStore.cardNumber.replace(/\D/g, '');
+  const raw = orderStore.cardNumber.trim();
+  // Раніше літери просто ігнорувались при підрахунку цифр — рядок типу
+  // "abcd4111111111112222xyz" міг випадково дати рівно 16 цифр і пройти.
+  if (!/^[\d\s]+$/.test(raw)) return 'Некоректний номер картки: лише цифри.';
+
+  const digits = raw.replace(/\s/g, '');
   if (digits.length !== 16) return 'Некоректний номер картки: має бути 16 цифр.';
+  // Луна саму послідовність однакових цифр (напр. усі нулі) вважає коректною
+  // математично — тому окремо відсіюємо явно фейкові номери цим патерном.
+  if (/^(\d)\1{15}$/.test(digits)) return 'Некоректний номер картки.';
+  if (!luhnCheck(digits)) return 'Некоректний номер картки.';
 
   const match = orderStore.cardExpiry.match(/^(\d{2})\/(\d{2})$/);
   if (!match) return 'Некоректний термін дії картки: формат MM/YY.';
@@ -216,11 +243,19 @@ const validateNewCard = (): string | null => {
   const now = new Date();
   const expiryEnd = new Date(year, month, 0);
   if (expiryEnd < new Date(now.getFullYear(), now.getMonth(), 1)) return 'Термін дії картки вже минув.';
+  // Реальні картки не видають на десятки років уперед — це так само підозріло,
+  // як і прострочена дата.
+  if (expiryEnd > new Date(now.getFullYear() + 10, now.getMonth(), 1)) return 'Некоректний термін дії картки.';
 
   if (!/^\d{3}$/.test(orderStore.cardCvv)) return 'Некоректний CVV: має бути 3 цифри.';
 
   return null;
 };
+
+// Індикатор "✅ верифіковано" раніше перевіряв лише довжину рядків (навіть
+// без CVV чи з місяцем "13" показував "успішно") — тепер відображає
+// результат тієї самої функції, що й реально блокує сабміт.
+const isNewCardValid = computed(() => validateNewCard() === null);
 
 const submitOrder = async () => {
   const isNewCard = orderStore.paymentMethod === 'card' && selectedCardId.value === 'new';

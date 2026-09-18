@@ -17,4 +17,9 @@ export interface ApiOrder {
   driver_email: string | null;
   driver_name: string | null;
   end_time: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
+  rating: number | null;
 }

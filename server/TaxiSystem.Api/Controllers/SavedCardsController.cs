@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxiSystem.Api.Data;
 using TaxiSystem.Api.DTOs;
 using TaxiSystem.Api.Models;
+using TaxiSystem.Api.Services;
 
 namespace TaxiSystem.Api.Controllers;
 
@@ -37,11 +38,12 @@ public class SavedCardsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<SavedCardResponse>> Add(AddSavedCardRequest request)
     {
-        var digits = new string(request.CardNumber.Where(char.IsDigit).ToArray());
-        if (digits.Length < 4)
+        if (!CardNumber.IsValid(request.CardNumber))
         {
             return BadRequest("Некоректний номер картки.");
         }
+
+        var digits = new string(request.CardNumber.Where(char.IsDigit).ToArray());
 
         var card = new SavedCard
         {

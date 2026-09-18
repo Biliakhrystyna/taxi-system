@@ -12,18 +12,15 @@
     </div>
 
     <div v-else class="active-order-box">
-      <div v-if="orderStore.currentOrder.zone === 'outskirts' || orderStore.currentOrder.motivation_bonus" class="bonus-alert">
-        🔥 Увага! Виявлено зону ДЕФІЦИТУ авто! Вам нараховано мотиваційну надбавку +{{ orderStore.currentOrder.motivation_bonus || 50 }} грн до тарифу!
-      </div>
       <p><strong>Клієнт:</strong> {{ orderStore.currentOrder.passenger_name }}</p>
       <p><strong>Маршрут:</strong> {{ orderStore.currentOrder.pickup_location }} → {{ orderStore.currentOrder.destination }}</p>
-      <p><strong>Ваш чистий дохід:</strong> <span class="price-text">{{ orderStore.currentOrder.estimated_cost }} грн</span></p>
+      <p><strong>Ваш дохід:</strong> <span class="price-text">{{ orderStore.currentOrder.estimated_cost }} грн</span></p>
       <p><strong>Погодний hazard рівень:</strong> {{ orderStore.currentOrder.weather_hazard_level }}</p>
 
       <div style="background: rgba(15, 23, 42, 0.4); padding: 12px; border-radius: 6px; margin-top: 12px; border: 1px dashed #475569; text-align: left;">
         <p style="margin: 0;">💵 <b>Метод оплати:</b> {{ orderStore.currentOrder.payment_method || 'Готівка' }}</p>
         <p style="margin: 6px 0 0 0;">📊 <b>Фінансовий статус:</b>
-          <span :style="orderStore.currentOrder.payment_status && orderStore.currentOrder.payment_status.includes('Оплачено') ? 'color: #10b981; font-weight: bold;' : 'color: #fbbf24; font-weight: bold;'">
+          <span class="badge" :class="orderStore.currentOrder.payment_status && orderStore.currentOrder.payment_status.includes('Оплачено') ? 'paid' : 'pending'">
             {{ orderStore.currentOrder.payment_status || 'Очікує завершення поїздки' }}
           </span>
         </p>
@@ -37,7 +34,7 @@
         </button>
 
         <button v-if="orderStore.currentOrder.current_status === 'in_progress'" class="btn danger-btn w-full" @click="orderStore.updateStatus('completed')">
-          💵 Завершити рейс та оновити базу
+          💵 Завершити рейс 
         </button>
       </div>
     </div>

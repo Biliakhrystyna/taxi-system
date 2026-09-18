@@ -13,11 +13,15 @@
       <button v-if="authStore.authState === 'main_app'" class="btn logout-btn" @click="authStore.logout">🚪 Вийти з акаунту</button>
     </header>
 
-    <p v-if="!authStore.isSignUp" class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
+    <p v-if="authStore.authState === 'role_selection'" class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
 
     <RoleSelector v-if="authStore.authState === 'role_selection'" />
 
     <AuthForm v-if="authStore.authState === 'auth_form'" />
+
+    <EmailVerification v-if="authStore.authState === 'email_verification'" />
+
+    <ForgotPassword v-if="authStore.authState === 'forgot_password'" />
 
     <DriverVerification v-if="authStore.authState === 'verified_check'" />
 
@@ -40,6 +44,7 @@
     </div>
     </div>
     <WeatherWarningModal />
+    <TripRatingModal />
 </template>
 
 <script setup lang="ts">
@@ -49,9 +54,12 @@ import { useOrderStore } from './stores/orderStore';
 import { useUiStore } from './stores/uiStore';
 import RoleSelector from './components/auth/RoleSelector.vue';
 import AuthForm from './components/auth/AuthForm.vue';
+import ForgotPassword from './components/auth/ForgotPassword.vue';
+import EmailVerification from './components/auth/EmailVerification.vue';
 import DriverVerification from './components/auth/DriverVerification.vue';
 import WeatherControls from './components/common/WeatherControls.vue';
 import WeatherWarningModal from './components/common/WeatherWarningModal.vue';
+import TripRatingModal from './components/common/TripRatingModal.vue';
 import PassengerDashboard from './components/passenger/PassengerDashboard.vue';
 import DriverDashboard from './components/driver/DriverDashboard.vue';
 import TripHistoryTable from './components/history/TripHistoryTable.vue';
@@ -132,9 +140,9 @@ body {
   left: 16px;
   bottom: 14px;
   margin: 0;
-  color: #f8fafc;
+  color: #eab308;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
   z-index: 5;
   pointer-events: none;
@@ -230,7 +238,10 @@ body {
 
 .auth-form, .booking-form { display: flex; flex-direction: column; gap: 15px; text-align: left; background: none; border: none; padding: 0; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
-.form-group label { font-size: 12px; color: #000000; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+/* nowrap — інакше довша підпис (напр. "ПРІЗВИЩЕ:") переноситься на 2 рядки,
+   а сусідня коротша ("ІМ'Я:") лишається на 1, і поля вводу в рядку
+   з'їжджають на різну висоту одне відносно одного. */
+.form-group label { font-size: 12px; color: #000000; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
 
 
 .form-input, .form-select {
@@ -243,13 +254,18 @@ body {
   font-weight: 600;
   outline: none;
   transition: all 0.2s;
+  width: 100%;
+  min-width: 0;
 }
 .form-input:focus, .form-select:focus {
   background: #fffdf2;
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.15);
 }
 .form-input:disabled { background: #e2e8f0; color: #ebedef; cursor: not-allowed; border-color: #94a3b8; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+/* minmax(0, 1fr) замість голого 1fr — інакше трек не стискається менше за
+   мінімальний вміст поля вводу і "розпирає" сітку та вікно на вузьких екранах. */
+.form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 15px; }
+.form-grid .form-group, .form-group { min-width: 0; }
 
 /* кнопки способу оплати*/
 .payment-methods .btn {
@@ -358,7 +374,7 @@ body {
   font-size: 13px !important;
   letter-spacing: 0.5px;
 }
-/*  стан кнопки Face-API  */
+/*  стан кнопки біометричного контролю  */
 .auth-card button[style*="color: rgb(56, 189, 248)"],
 .auth-card button[style*="color: #38bdf8"] {
   background: #000000 !important;
@@ -375,11 +391,17 @@ body {
 .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
 .badge.completed { background: #000000; color: #ffffff; border: 1px solid #000000; }
 .badge.waiting { background: #ffffff; color: #000000; border: 2px solid #000000; }
+.badge.accepted { background: #1e293b; color: #eab308; border: 1px solid #000000; }
+.badge.in_progress { background: #eab308; color: #000000; border: 1px solid #000000; }
 .badge.cancelled { background: #dc2626; color: #ffffff; border: 1px solid #000000; }
+.badge.paid { background: #000000; color: #eab308; border: 1px solid #000000; }
+.badge.pending { background: #ffffff; color: #000000; border: 2px solid #000000; }
+
+.rating-stars { color: #b45309; font-size: 15px; letter-spacing: 1px; white-space: nowrap; }
 .no-data { color: #4b5563; padding: 20px; text-align: center; font-size: 13px; font-weight: bold; }
 
 
-.global-alert { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #000000; color: #eab308; padding: 12px 30px; border-radius: 30px; font-weight: bold; border: 2px solid #eab308; box-shadow: 0 10px 20px rgba(0,0,0,0.5); z-index: 9999; }
+.global-alert { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #000000; color: #eab308; padding: 12px 30px; border-radius: 30px; font-weight: bold; border: 2px solid #eab308; box-shadow: 0 10px 20px rgba(0,0,0,0.5); z-index: 9999; pointer-events: none; }
 
 
 .main-grid { display: grid; grid-template-columns: 1fr; gap: 25px; }
