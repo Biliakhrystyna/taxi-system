@@ -12,6 +12,11 @@ public class Order
     public string Destination { get; set; } = string.Empty;
     public string CarClass { get; set; } = string.Empty;
 
+    public double? PickupLat { get; set; }
+    public double? PickupLng { get; set; }
+    public double? DestinationLat { get; set; }
+    public double? DestinationLng { get; set; }
+
     public int EstimatedCost { get; set; }
 
     /// <summary>"HIGH" | "NORMAL"</summary>
@@ -28,6 +33,9 @@ public class Order
     public string? DriverEmail { get; set; }
     public string? DriverName { get; set; }
     public string? EndTime { get; set; }
+
+    /// <summary>1-5, ставить лише пасажир і лише після "completed". Null, поки не оцінено.</summary>
+    public int? Rating { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

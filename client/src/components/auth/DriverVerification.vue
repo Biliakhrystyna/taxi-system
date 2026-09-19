@@ -23,8 +23,8 @@
         @click="authStore.faceVerified = true"
         style="width: 100%; padding: 12px; font-weight: bold; border: 1px solid;"
       >
-        <span v-if="authStore.faceVerified">📸 Особу підтверджено нейромережею Face-API.js</span>
-        <span v-else>📷 Запустити Face-API біометричний контроль</span>
+        <span v-if="authStore.faceVerified">📸 Особу підтверджено біометричним сканером</span>
+        <span v-else>📷 Запустити біометричний контроль</span>
       </button>
     </div>
 

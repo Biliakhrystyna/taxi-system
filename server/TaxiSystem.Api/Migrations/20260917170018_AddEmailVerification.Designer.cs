@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxiSystem.Api.Data;
@@ -11,9 +12,11 @@ using TaxiSystem.Api.Data;
 namespace TaxiSystem.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260917170018_AddEmailVerification")]
+    partial class AddEmailVerification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -41,12 +44,6 @@ namespace TaxiSystem.Api.Migrations
                     b.Property<string>("Destination")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<double?>("DestinationLat")
-                        .HasColumnType("double precision");
-
-                    b.Property<double?>("DestinationLng")
-                        .HasColumnType("double precision");
 
                     b.Property<string>("DriverEmail")
                         .HasColumnType("text");
@@ -76,18 +73,9 @@ namespace TaxiSystem.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<double?>("PickupLat")
-                        .HasColumnType("double precision");
-
-                    b.Property<double?>("PickupLng")
-                        .HasColumnType("double precision");
-
                     b.Property<string>("PickupLocation")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<int?>("Rating")
-                        .HasColumnType("integer");
 
                     b.Property<bool>("SafeRouteApplied")
                         .HasColumnType("boolean");
@@ -144,12 +132,6 @@ namespace TaxiSystem.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsDriver")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsPassenger")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -162,6 +144,10 @@ namespace TaxiSystem.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Role")
                         .IsRequired()
                         .HasColumnType("text");
 

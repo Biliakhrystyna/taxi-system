@@ -31,9 +31,18 @@ let markerA: L.Marker | null = null;
 let markerB: L.Marker | null = null;
 let routeLine: L.Polyline | null = null;
 
+// drawRoute чекає відповіді ORS (асинхронно) — якщо замовлення завершилось
+// чи змінилось ПОКИ запит ще летів, стара відповідь інакше домальовується
+// на мапу вже ПІСЛЯ того, як усе мало очиститись ("маршрут попередньої
+// поїздки висить"). Токен інвалідовує будь-який виклик, застарілий на
+// момент, коли відповідь нарешті прийшла.
+let routeDrawToken = 0;
+const invalidatePendingRoute = () => { routeDrawToken++; };
+
 // Універсальна функція малювання лінії маршруту (для пасажира і водія)
 const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
   if (!map) return;
+  const myToken = ++routeDrawToken;
   if (routeLine) map.removeLayer(routeLine);
 
   if (isSafeApplied && orderStore.isBadWeather) {
@@ -41,7 +50,7 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
     // (OpenRouteServiceClient на бекенді). Якщо ORS недоступний/без ключа —
     // падаємо на клієнтську симуляцію (синусоїда), як і раніше.
     let points: LatLng[] = [];
-    let popupLabel = '🛡️ ШІ-маршрут: симуляція обходу (ORS недоступний)';
+    let popupLabel = '🛡️ Безпечний маршрут: симуляція обходу (ORS недоступний)';
 
     try {
       const safeRoute = await routingApi.getSafeRoute(a, b);
@@ -57,7 +66,10 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
       points = buildSimulatedSafeRoute(a, b);
     }
 
-    if (!map) return; // компонент міг демонтуватись, поки чекали відповідь
+    // Компонент міг демонтуватись, або новіший виклик drawRoute (чи повне
+    // очищення при зміні/завершенні замовлення) уже стартував, поки ми
+    // чекали відповідь — ця відповідь застаріла, малювати її не можна.
+    if (!map || myToken !== routeDrawToken) return;
 
     routeLine = L.polyline(points, {
       color: '#f97316',
@@ -89,7 +101,7 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
       points = buildDirectRoute(a, b);
     }
 
-    if (!map) return; // компонент міг демонтуватись, поки чекали відповідь
+    if (!map || myToken !== routeDrawToken) return; // застарілий виклик — див. коментар вище
 
     routeLine = L.polyline(points, {
       color: '#38bdf8',
@@ -194,6 +206,7 @@ watch(
     }
 
     // Скинуто ззовні (третій клік / "Очистити поточне замовлення") — прибираємо все.
+    invalidatePendingRoute();
     if (markerA) { map?.removeLayer(markerA); markerA = null; }
     if (markerB) { map?.removeLayer(markerB); markerB = null; }
     if (routeLine) { map?.removeLayer(routeLine); routeLine = null; }
@@ -210,6 +223,7 @@ watch(
       return;
     }
 
+    invalidatePendingRoute();
     if (markerB) { map?.removeLayer(markerB); markerB = null; }
     if (routeLine) { map?.removeLayer(routeLine); routeLine = null; }
   },
@@ -220,30 +234,31 @@ watch(
   (newOrder) => {
     if (!map || props.role === 'passenger') return;
 
-    if (newOrder && newOrder.order_id && newOrder.pickup_location && newOrder.destination) {
-      const parseCoords = (str: string): LatLng => {
-        const parts = str.replace(/[^\d.,-]/g, '').split(',');
-        return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]) };
-      };
+    // Завжди прибираємо попередні маркери/маршрут перед тим, як малювати
+    // нові — інакше при переході з одного активного замовлення напряму на
+    // інше (без проміжного "немає замовлення", напр. коли перехопили
+    // замовлення, яке я саме розглядав) старий маркер лишався на СТАРИХ
+    // координатах, а лінія маршруту вже малювалась до нових — водій бачив
+    // неузгоджену картинку, ніби "чийсь чужий" маршрут.
+    invalidatePendingRoute();
+    if (markerA) { map.removeLayer(markerA); markerA = null; }
+    if (markerB) { map.removeLayer(markerB); markerB = null; }
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
 
-      try {
-        const coordsA = parseCoords(newOrder.pickup_location);
-        const coordsB = parseCoords(newOrder.destination);
+    if (
+      newOrder && newOrder.order_id &&
+      newOrder.pickup_lat !== null && newOrder.pickup_lat !== undefined &&
+      newOrder.pickup_lng !== null && newOrder.pickup_lng !== undefined &&
+      newOrder.destination_lat !== null && newOrder.destination_lat !== undefined &&
+      newOrder.destination_lng !== null && newOrder.destination_lng !== undefined
+    ) {
+      const coordsA: LatLng = { lat: newOrder.pickup_lat, lng: newOrder.pickup_lng };
+      const coordsB: LatLng = { lat: newOrder.destination_lat, lng: newOrder.destination_lng };
 
-        if (!markerA) markerA = L.marker([coordsA.lat, coordsA.lng]).addTo(map).bindPopup('📍 Пасажир тут');
-        if (!markerB) markerB = L.marker([coordsB.lat, coordsB.lng]).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
+      markerA = L.marker([coordsA.lat, coordsA.lng]).addTo(map).bindPopup('📍 Пасажир тут');
+      markerB = L.marker([coordsB.lat, coordsB.lng]).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
 
-        drawRoute(coordsA, coordsB, newOrder.safe_route_applied);
-      } catch (e) {
-        console.log('Парсинг адресних координат...');
-      }
-    } else {
-      if (markerA) map.removeLayer(markerA);
-      if (markerB) map.removeLayer(markerB);
-      if (routeLine) map.removeLayer(routeLine);
-      markerA = null;
-      markerB = null;
-      routeLine = null;
+      drawRoute(coordsA, coordsB, newOrder.safe_route_applied);
     }
   },
   { deep: true },

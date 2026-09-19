@@ -8,9 +8,13 @@ export interface ApiUser {
   first_name: string;
   last_name: string;
   phone: string;
+  /** Роль цього конкретного входу/реєстрації — не єдина роль акаунту. */
   role: UserRole;
   status: AccountStatus;
+  email_confirmed: boolean;
   total_trips: number;
   license_number: string | null;
   driver_car_class: DriverCarClass | null;
+  is_passenger: boolean;
+  is_driver: boolean;
 }
