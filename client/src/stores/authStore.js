@@ -1,5 +1,5 @@
 import { acceptHMRUpdate, defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useOrderStore } from './orderStore';
 import { useUiStore } from './uiStore';
 import { authApi } from '../services/authApi';
@@ -29,11 +29,46 @@ export const useAuthStore = defineStore('auth', () => {
   const verificationCodeInput = ref('');
 
   // Відновлення пароля — той самий код, що й підтвердження email, просто
-  // інший сценарій використання (див. AuthController.ForgotPassword/ResetPassword).
+  // інший сценарій використання 
   const forgotPasswordEmail = ref('');
   const forgotPasswordCode = ref('');
   const forgotPasswordNewPassword = ref('');
   const forgotPasswordStep = ref('request'); // 'request' | 'reset'
+
+  // Збережений вхід: після перезавантаження вкладки користувач лишається в
+  // кабінеті, а не повертається на вибір ролі. sessionStorage — окремий для
+  // кожної вкладки, тож водій і пасажир у сусідніх вікнах не перезаписують
+  // один одного.
+  const SESSION_KEY = 'taxi_session';
+
+  const restoreSession = () => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+
+      const user = JSON.parse(raw);
+      if (!user?.email || !['passenger', 'driver'].includes(user.role)) return;
+
+      currentUser.value = user;
+      userRole.value = user.role;
+      authState.value = 'main_app';
+      useOrderStore().subscribeToUserData(user.email, user.role);
+    } catch {
+      
+    }
+  };
+
+  watch([authState, currentUser], () => {
+    try {
+      if (authState.value === 'main_app' && currentUser.value) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser.value));
+      } else if (authState.value === 'role_selection') {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
+    } catch {
+      
+    }
+  }, { deep: true });
 
   const handleAuthSubmit = async () => {
     const orderStore = useOrderStore();
@@ -54,19 +89,14 @@ export const useAuthStore = defineStore('auth', () => {
         return;
       }
 
-      // Поле телефону тепер містить лише 9 цифр після незмінного префіксу
-      // +380 (сам префікс показаний у формі, не вводиться користувачем) —
-      // перша цифра ніколи не 0/1/2 у реальних операторських кодах, тож це
-      // відсіює сміття типу "000000000" без жорсткого списку кодів.
+    
       const phoneDigits = phoneInput.value.replace(/\D/g, '');
       if (!/^[3-9]\d{8}$/.test(phoneDigits)) {
         uiStore.triggerError('Некоректний ввід: номер телефону має бути 9 цифр після +380 (не починається з 0-2).');
         return;
       }
 
-      // Українське пластикове посвідчення водія: 3 літери + 6 цифр, без
-      // пробілів/дефісів/крапок (самі пробіли з поля вводу прибираємо перед
-      // перевіркою, решта спецсимволів провалює формат).
+      // Українське пластикове посвідчення водія: 3 літери + 6 цифр
       if (userRole.value === 'driver') {
         const licenseNormalized = licenseInput.value.replace(/\s/g, '').toUpperCase();
         if (!/^[A-ZА-ЯҐЄІЇ]{3}\d{6}$/.test(licenseNormalized)) {
@@ -104,9 +134,7 @@ export const useAuthStore = defineStore('auth', () => {
             orderStore.subscribeToUserData(user.email, user.role);
           }
         } else {
-          // Пошту підтверджуємо одразу після реєстрації, для обох ролей —
-          // раніше за біометричну перевірку водія (спершу доводимо, що пошта
-          // справжня, потім уже документи).
+          
           uiStore.triggerSuccess('Код підтвердження надіслано на вашу пошту.');
           authState.value = 'email_verification';
         }
@@ -120,9 +148,7 @@ export const useAuthStore = defineStore('auth', () => {
         currentUser.value = user;
         uiStore.triggerSuccess(`Вітаємо, ${user.first_name}! Вхід успішний.`);
 
-        // "pending_verification" стосується лише ролі водія (біометрія/
-        // документи) — той самий акаунт може вже мати активну роль пасажира,
-        // тож перевірка статусу має враховувати, у якій ролі саме входимо.
+       
         if (user.role === 'driver' && user.status === 'pending_verification') {
           authState.value = 'verified_check';
         } else {
@@ -132,10 +158,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
     } catch (err) {
       if (err instanceof ApiError) {
-        // 403 при вході = пароль вірний, але пошта не підтверджена — ведемо
-        // на той самий екран коду замість глухого кута з текстом помилки.
-        // Без email (увійшли за телефоном) — цей перехід неможливий, лишається
-        // звичайний банер помилки, бо надіслати новий код нема на яку адресу.
+
         if (err.status === 403 && !isSignUp.value && identifierInput.value.includes('@')) {
           currentUser.value = { email: identifierInput.value };
           uiStore.triggerError(err.message);
@@ -143,7 +166,7 @@ export const useAuthStore = defineStore('auth', () => {
           return;
         }
 
-        // Сервер уже повертає людяний текст (409/401/400) — показуємо як є.
+        
         uiStore.triggerError(err.message || 'Помилка автентифікації.');
       } else {
         uiStore.triggerError("Сталася помилка з'єднання з сервером. Перевірте, чи запущений бекенд (dotnet run у server/TaxiSystem.Api).");
@@ -151,8 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // Одноразове підтвердження пошти кодом з листа (EmailConfirmed=true назавжди
-  // після успіху) — до нього ні водій, ні пасажир не потрапляє в кабінет.
+ 
   const handleVerifyEmail = async () => {
     if (!currentUser.value || !verificationCodeInput.value) return;
 
@@ -192,9 +214,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // Крок 1: запит коду на email. Навмисно завжди показуємо той самий успіх —
-  // сервер теж не розкриває, чи існує такий email (щоб не давати спосіб
-  // перебором з'ясовувати зареєстровані адреси).
+
   const handleForgotPasswordRequest = async () => {
     if (!forgotPasswordEmail.value) return;
     const uiStore = useUiStore();
@@ -208,7 +228,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
-  // Крок 2: код + новий пароль.
+
   const handleResetPassword = async () => {
     const uiStore = useUiStore();
 
@@ -273,7 +293,7 @@ export const useAuthStore = defineStore('auth', () => {
     identifierInput, passwordInput, firstNameInput, lastNameInput, phoneInput, licenseInput, driverCarClass,
     documentUploaded, faceVerified, verificationCodeInput,
     forgotPasswordEmail, forgotPasswordCode, forgotPasswordNewPassword, forgotPasswordStep,
-    handleAuthSubmit, handleVerifyEmail, handleResendCode, verifyDriverDocuments, logout,
+    handleAuthSubmit, handleVerifyEmail, handleResendCode, verifyDriverDocuments, logout, restoreSession,
     handleForgotPasswordRequest, handleResetPassword,
   };
 });

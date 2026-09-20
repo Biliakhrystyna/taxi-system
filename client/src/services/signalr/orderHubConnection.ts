@@ -13,11 +13,7 @@ function getConnection(): signalR.HubConnection {
       .withAutomaticReconnect()
       .build();
 
-    // withAutomaticReconnect() сам оживляє з'єднання лише після короткого
-    // розриву мережі — спроб обмежена кількість, і якщо вкладка "проспала"
-    // довше (ноутбук заснув/закрили кришку), він здається назавжди й
-    // переходить у onclose. Без цього обробника вкладка так і лишається
-    // "глухою" до нових подій, навіть коли мережа згодом повертається.
+  
     connection.onreconnected(() => {
       onReconnectedCallback?.();
     });
@@ -25,8 +21,7 @@ function getConnection(): signalR.HubConnection {
   return connection;
 }
 
-/** Один спільний конект на весь застосунок — orderStore підписується на нього
- * (OrderUpdated, WeatherUpdated). */
+
 export function ensureOrderHubConnected(): Promise<signalR.HubConnection> {
   const conn = getConnection();
 
@@ -52,15 +47,9 @@ export function ensureOrderHubConnected(): Promise<signalR.HubConnection> {
   return startPromise.then(() => conn);
 }
 
-/** Викликається щоразу, коли з'єднання ожило ПІСЛЯ реального розриву (не
- * при першому вході) — orderStore тут дозаписує стан, пропущений, поки
- * зв'язку не було. */
+
 export function onOrderHubReconnected(callback: () => void): void {
   onReconnectedCallback = callback;
-}
-
-export function getOrderHubConnection(): signalR.HubConnection {
-  return getConnection();
 }
 
 function reviveIfDead(): void {
@@ -70,10 +59,7 @@ function reviveIfDead(): void {
   }
 }
 
-// Засинання ноутбука з відкритою вкладкою — типовий сценарій, коли
-// withAutomaticReconnect() вичерпує спроби задовго до пробудження й більше
-// сам не намагається. При поверненні вкладки у фокус перевіряємо з'єднання
-// і піднімаємо його вручну, якщо воно досі мертве.
+
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') reviveIfDead();
