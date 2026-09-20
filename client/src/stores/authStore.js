@@ -2,6 +2,7 @@ import { acceptHMRUpdate, defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { useOrderStore } from './orderStore';
 import { useUiStore } from './uiStore';
+import { useTabGuard } from './auth/useTabGuard';
 import { authApi } from '../services/authApi';
 import { ApiError } from '../services/http';
 
@@ -287,6 +288,8 @@ export const useAuthStore = defineStore('auth', () => {
     phoneInput.value = '';
     verificationCodeInput.value = '';
   };
+
+  useTabGuard({ authState, currentUser, userRole, logout });
 
   return {
     userRole, authState, isSignUp, currentUser,

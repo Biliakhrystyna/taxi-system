@@ -65,6 +65,13 @@ public class OrdersController : ControllerBase
         var passenger = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.PassengerEmail);
         if (passenger is null) return BadRequest("Пасажира не знайдено.");
 
+        var isDrivingNow = await _db.Orders.AnyAsync(o =>
+            o.DriverEmail == passenger.Email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
+        if (isDrivingNow)
+        {
+            return Conflict("У вас є активна поїздка в ролі водія — завершіть її, перш ніж замовляти як пасажир.");
+        }
+
         var estimatedCost = await CalculateEstimatedCostAsync(
             request.CarClass, request.IsBadWeather, request.SafeRouteApplied, request.SafeRouteMatchesStandard,
             request.PickupLat, request.PickupLng, request.DestinationLat, request.DestinationLng, HttpContext.RequestAborted);
@@ -150,11 +157,35 @@ public class OrdersController : ControllerBase
         return Ok(orders.Select(ToResponse));
     }
 
+    /// <summary>Водій не може прийняти власне замовлення або їхати, поки сам їде пасажиром.</summary>
+    private async Task<ActionResult?> CheckDriverCanAcceptAsync(string orderId, string? driverEmail)
+    {
+        var passengerEmail = await _db.Orders
+            .Where(o => o.OrderId == orderId)
+            .Select(o => o.PassengerEmail)
+            .FirstOrDefaultAsync();
+
+        if (passengerEmail is not null && passengerEmail == driverEmail)
+        {
+            return Conflict("Не можна прийняти власне замовлення.");
+        }
+
+        var isRidingNow = await _db.Orders.AnyAsync(o =>
+            o.PassengerEmail == driverEmail && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
+
+        return isRidingNow
+            ? Conflict("У вас є активна поїздка в ролі пасажира — завершіть її, перш ніж приймати замовлення.")
+            : null;
+    }
+
     [HttpPost("{orderId}/status")]
     public async Task<ActionResult<OrderResponse>> UpdateStatus(string orderId, UpdateOrderStatusRequest request)
     {
         if (request.NewStatus == "accepted")
         {
+            var conflict = await CheckDriverCanAcceptAsync(orderId, request.DriverEmail);
+            if (conflict is not null) return conflict;
+
             // Атомарний UPDATE: два водії не можуть одночасно прийняти те саме замовлення.
             var rowsUpdated = await _db.Orders
                 .Where(o => o.OrderId == orderId && (o.DriverEmail == null || o.DriverEmail == request.DriverEmail))
