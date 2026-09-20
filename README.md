@@ -13,7 +13,7 @@
   - Nominatim (OpenStreetMap): резервний геокодинг
   - SendGrid: лист із кодом підтвердження пошти
 - **Безпека:** хешування паролів BCrypt, підтвердження пошти кодом
-- **Деплой:** Docker (Railway)
+- **Деплой:** Railway
 - **Методологія:** Kanban (дошка в GitHub Projects)
 - **VCS:** Git / GitHub
 
@@ -62,17 +62,11 @@ BackgroundServices/  фоновий моніторинг погоди
 
 ## Запуск локально
 
-Потрібні: Node.js, .NET 8 SDK, PostgreSQL (наприклад, у Docker).
+Потрібні: Node.js, .NET 8 SDK, PostgreSQL.
 
 ### 1. База даних
 
-Сервер очікує PostgreSQL за рядком `ConnectionStrings:Default` з `server/TaxiSystem.Api/appsettings.json` (за замовчуванням `localhost:5432`, база `taxi`). Приклад запуску в Docker:
-
-```sh
-docker run --name taxi-postgres -e POSTGRES_PASSWORD=<пароль з рядка підключення> -e POSTGRES_DB=taxi -p 5432:5432 -d postgres:16
-```
-
-Міграції застосовуються автоматично при старті сервера.
+Створи порожню базу PostgreSQL (наприклад, `taxi`). Міграції застосовуються автоматично при старті сервера. Рядок підключення в репозиторії не зберігається, його задають у user-secrets (див. нижче).
 
 ### 2. Сервер
 
@@ -80,6 +74,7 @@ docker run --name taxi-postgres -e POSTGRES_PASSWORD=<пароль з рядка
 
 ```sh
 cd server/TaxiSystem.Api
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=taxi;Username=<користувач>;Password=<пароль>"
 dotnet user-secrets set "OpenRouteService:ApiKey" "<ключ>"
 dotnet user-secrets set "SendGrid:ApiKey" "<ключ>"
 dotnet user-secrets set "SendGrid:FromEmail" "<адреса відправника>"
@@ -102,10 +97,10 @@ npm run dev
 
 | Змінна | Призначення |
 |---|---|
-| `DATABASE_URL` | рядок підключення PostgreSQL (`postgresql://user:pass@host:port/db`), має пріоритет над `ConnectionStrings:Default` |
+| `DATABASE_URL` | рядок підключення PostgreSQL (`postgresql://user:pass@host:port/db`); на Railway підставляється з підключеної бази, має пріоритет над `ConnectionStrings:Default` |
 | `PORT` | порт, який віддає хостинг |
 | `Client__Origin` | адреса(и) клієнта для CORS, через кому |
 | `OpenRouteService__ApiKey` | ключ OpenRouteService |
 | `SendGrid__ApiKey`, `SendGrid__FromEmail` | налаштування пошти |
 
-Для Railway в `server/` є `Dockerfile`.
+Сервер збирається на Railway з папки `server/`.
