@@ -21,9 +21,9 @@
 
         <div class="form-group mt-2">
           <label>Номер телефону:</label>
-          <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="row-center">
             <span style="font-weight: 800; color: #000000; flex-shrink: 0;">+380</span>
-            <input type="text" v-model="authStore.phoneInput" placeholder="671234567" maxlength="9" class="form-input" style="flex: 1; min-width: 0;" required />
+            <input type="text" v-model="authStore.phoneInput" placeholder="671234567" maxlength="9" class="form-input flex-1" required />
           </div>
         </div>
 

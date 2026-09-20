@@ -1,0 +1,32 @@
+.upload-zone {
+  border: 3px dashed var(--black) !important;
+  padding: 25px;
+  border-radius: 8px;
+  margin: 15px 0;
+  background: #fffbeb !important; 
+  text-align: center;
+  color: var(--black) !important;
+  font-weight: 800 !important;
+  font-size: 14px;
+}
+.success-border {
+  background: #fef08a !important; 
+}
+
+.auth-card button[style*="color: rgb(52, 211, 153)"],
+.auth-card button[style*="color: #34d399"] {
+  background: #10b981 !important; 
+  color: var(--black) !important;      
+  border: 3px solid var(--black) !important;
+  font-weight: 900 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.5px;
+}
+/*  стан кнопки біометричного контролю  */
+.auth-card button[style*="color: rgb(56, 189, 248)"],
+.auth-card button[style*="color: #38bdf8"] {
+  background: var(--black) !important;
+  color: var(--yellow) !important;
+  border: 3px solid var(--black) !important;
+  font-weight: 900 !important;
+}

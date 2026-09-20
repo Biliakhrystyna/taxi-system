@@ -82,13 +82,13 @@
           </div>
 
           <div style="display: flex; gap: 10px; margin-top: 12px;">
-            <div class="form-group" style="flex: 1;">
+            <div class="form-group flex-1">
               <label>Термін дії:</label>
-              <input type="text" v-model="orderStore.cardExpiry" placeholder="MM/YY" maxlength="5" class="form-input" style="text-align: center;" />
+              <input type="text" v-model="orderStore.cardExpiry" placeholder="MM/YY" maxlength="5" class="form-input input-center" />
             </div>
-            <div class="form-group" style="flex: 1;">
+            <div class="form-group flex-1">
               <label>CVC/CVV:</label>
-              <input type="password" v-model="orderStore.cardCvv" placeholder="•••" maxlength="3" class="form-input" style="text-align: center; letter-spacing: 3px;" />
+              <input type="password" v-model="orderStore.cardCvv" placeholder="•••" maxlength="3" class="form-input input-center" style="letter-spacing: 3px;" />
             </div>
           </div>
 
@@ -97,7 +97,7 @@
             💾 Запам'ятати цю картку для наступного разу
           </label>
 
-          <div v-if="isNewCardValid" class="mt-3 text-center" style="font-size: 11px; color: #10b981; font-weight: bold;">
+          <div v-if="isNewCardValid" class="mt-3 text-center text-xs text-success">
             ✅ Картку та платіжні дані успішно верифіковано
           </div>
         </template>
@@ -112,7 +112,7 @@
         <button class="btn success-btn w-full" :disabled="!orderStore.pickupLocation || !orderStore.destinationLocation" @click="submitOrder">
           Сформувати замовлення
         </button>
-        <p v-if="!orderStore.pickupLocation || !orderStore.destinationLocation" class="text-center mt-2" style="font-size: 11px; color: #94a3b8;">
+        <p v-if="!orderStore.pickupLocation || !orderStore.destinationLocation" class="text-center mt-2 text-xs text-muted">
           * Будь ласка, оберіть Точки А та В на мапі нижче, щоб розрахувати маршрут.
         </p>
       </div>

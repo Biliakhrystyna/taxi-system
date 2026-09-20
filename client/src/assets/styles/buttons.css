@@ -1,0 +1,36 @@
+/* кнопки способу оплати*/
+.payment-methods .btn {
+  background: var(--yellow) !important;
+  color: var(--black) !important;
+  border: 3px solid var(--black) !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+.payment-methods .btn[style*="border-color: rgb(56, 189, 248)"],
+.payment-methods .btn[style*="border-color: #38bdf8"] {
+  background: var(--black) !important;
+  color: var(--yellow) !important;
+  border: 3px solid var(--black) !important;
+}
+
+.btn { padding: 11px 18px; border: none; border-radius: 6px; font-weight: 800; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; text-transform: uppercase; font-size: 13px; }
+
+.success-btn { background: var(--black); color: var(--yellow); border: 3px solid var(--black); }
+.success-btn:hover:not(:disabled) { background: var(--slate-800); color: var(--white); }
+
+.success-btn:disabled {
+  background: #374151 !important;
+  color: #9ca3af !important;
+  border-color: var(--black) !important;
+  cursor: not-allowed;
+}
+
+.primary-btn { background: var(--white); color: var(--black); border: 2px solid var(--black); }
+.primary-btn:hover { background: var(--slate-200); }
+
+.danger-btn { background: var(--red); color: var(--white); border: 2px solid var(--black); }
+.danger-btn:hover { background: var(--red-dark); }
+
+.reset-btn { background: var(--black); color: var(--white); font-size: 12px; border: 2px solid var(--black); }
+.reset-btn:hover { background: var(--red); color: var(--white); }

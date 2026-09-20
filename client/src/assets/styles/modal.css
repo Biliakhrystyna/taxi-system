@@ -1,0 +1,46 @@
+.global-alert { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--black); color: var(--yellow); padding: 12px 30px; border-radius: 30px; font-weight: bold; border: 2px solid var(--yellow); box-shadow: 0 10px 20px rgba(0,0,0,0.5); z-index: 9999; pointer-events: none; }
+
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.modal-card {
+  background: var(--slate-900);
+  padding: 25px;
+  border-radius: 12px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+.modal-card--rating { border: 2px solid var(--yellow); max-width: 420px; text-align: center; }
+.modal-card--warning { border: 2px solid var(--red-alert); max-width: 500px; }
+
+.modal-header { text-align: center; margin-bottom: 15px; }
+.modal-icon { font-size: 40px; }
+.modal-title { margin: 10px 0 0 0; font-weight: bold; text-transform: uppercase; }
+.modal-title--rating { color: var(--yellow); font-size: 18px; }
+.modal-title--warning { color: var(--red-alert); font-size: 20px; }
+.modal-text { color: var(--slate-200); font-size: 14px; }
+.modal-text--centered { line-height: 1.6; text-align: center; }
+.modal-text-danger { color: #f87171; }
+.modal-stars { margin: 18px 0; font-size: 34px; letter-spacing: 6px; }
+
+.route-summary { background: rgba(30, 41, 59, 0.6); padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid var(--slate-700); }
+.route-row { display: flex; justify-content: space-between; font-size: 13px; }
+.route-row--spaced { margin-bottom: 5px; }
+.route-row--safe { color: var(--orange); }
+.route-row-label { color: var(--sky); }
+.route-note { font-size: 12px; color: var(--slate-400); margin-top: 6px; text-align: right; }
+
+.btn-stack { display: flex; flex-direction: column; gap: 10px; }
+.btn-warning { background: var(--orange); color: white; font-weight: bold; padding: 12px; }
+.btn-muted { background: rgba(71, 85, 105, 0.3); color: var(--slate-300); border: 1px solid var(--slate-600); padding: 10px; }

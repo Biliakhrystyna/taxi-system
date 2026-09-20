@@ -1,0 +1,16 @@
+/* Таблиця історій поїздок*/
+.history-box { margin-top: 25px; }
+.history-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+.history-table th { background: var(--black); padding: 12px; text-align: left; color: var(--yellow); border-bottom: 2px solid var(--black); font-weight: bold; }
+.history-table td { padding: 12px; border-bottom: 1px solid var(--black); color: var(--black); font-weight: 600; }
+.badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+.badge.completed { background: var(--black); color: var(--white); border: 1px solid var(--black); }
+.badge.waiting { background: var(--yellow); color: var(--black); border: 1px solid var(--black); }
+.badge.accepted { background: var(--slate-800); color: var(--yellow); border: 1px solid var(--black); }
+.badge.in_progress { background: var(--yellow); color: var(--black); border: 1px solid var(--black); }
+.badge.cancelled { background: var(--red); color: var(--white); border: 1px solid var(--black); }
+.badge.paid { background: var(--black); color: var(--yellow); border: 1px solid var(--black); }
+.badge.pending { background: var(--yellow); color: var(--black); border: 1px solid var(--black); }
+
+.rating-stars { color: #b45309; font-size: 15px; letter-spacing: 1px; white-space: nowrap; }
+.no-data { color: #4b5563; padding: 20px; text-align: center; font-size: 13px; font-weight: bold; }

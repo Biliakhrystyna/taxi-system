@@ -1,0 +1,29 @@
+.auth-form, .booking-form { display: flex; flex-direction: column; gap: 15px; text-align: left; background: none; border: none; padding: 0; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.form-group label { font-size: 12px; color: var(--black); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+
+.form-input, .form-select {
+  background: var(--white);
+  border: 2px solid var(--black);
+  border-radius: 6px;
+  color: var(--black);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.2s;
+  width: 100%;
+  min-width: 0;
+}
+.form-input:focus, .form-select:focus {
+  background: #fffdf2;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.15);
+}
+.form-input:disabled { background: var(--slate-200); color: #ebedef; cursor: not-allowed; border-color: #94a3b8; }
+
+.form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 15px; }
+.form-grid .form-group, .form-group { min-width: 0; }
+
+.code-input { text-align: center; letter-spacing: 6px; font-size: 18px; }
+.input-center { text-align: center; }

@@ -11,8 +11,7 @@
           v-model="authStore.verificationCodeInput"
           placeholder="123456"
           maxlength="6"
-          class="form-input"
-          style="text-align: center; letter-spacing: 6px; font-size: 18px;"
+          class="form-input code-input"
           required
         />
       </div>

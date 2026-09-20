@@ -23,7 +23,7 @@
           {{ orderStore.currentOrder.payment_status || 'Очікує завершення поїздки' }}
         </span>
       </p>
-      <div class="driver-buttons mt-4" style="display: flex; flex-direction: column; gap: 10px;">
+      <div class="driver-buttons btn-stack mt-4">
         <button v-if="orderStore.currentOrder.current_status === 'waiting'" class="btn success-btn w-full" @click="orderStore.updateStatus('accepted')">
           🔀 Прийняти замовлення
         </button>

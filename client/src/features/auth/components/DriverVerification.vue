@@ -12,7 +12,7 @@
       @click="authStore.documentUploaded = true"
     >
       <p v-if="!authStore.documentUploaded">📁 Перетягніть скан-копію посвідчення або натисніть для вибору файлу</p>
-      <p v-else style="color: #10b981; font-weight: bold;">✅ Документ "license_scan.pdf" успішно розпізнано!</p>
+      <p v-else class="text-success">✅ Документ "license_scan.pdf" успішно розпізнано!</p>
     </div>
 
     <div style="margin-bottom: 25px;">
