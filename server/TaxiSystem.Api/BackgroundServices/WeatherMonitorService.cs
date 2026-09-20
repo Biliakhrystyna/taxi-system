@@ -5,24 +5,20 @@ using TaxiSystem.Api.Services;
 namespace TaxiSystem.Api.BackgroundServices;
 
 /// <summary>
-/// Фоновий сервіс ASP.NET Core  раз на хвилину опитує Open-Meteo
-/// про поточну небезпеку на дорозі для опорної точки й штовхає результат
-/// усім підключеним клієнтам через SignalR-хаб OrderHub. Опитування
-/// Open-Meteo  —  це періодичний push.
-///
+/// Раз на хвилину опитує Open-Meteo для опорної точки й розсилає результат усім клієнтам через SignalR-хаб OrderHub.
 /// </summary>
-public class DemandZoneCalculatorService : BackgroundService
+public class WeatherMonitorService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
 
     private readonly OpenMeteoClient _openMeteo;
     private readonly IHubContext<OrderHub> _hubContext;
-    private readonly ILogger<DemandZoneCalculatorService> _logger;
+    private readonly ILogger<WeatherMonitorService> _logger;
 
-    public DemandZoneCalculatorService(
+    public WeatherMonitorService(
         OpenMeteoClient openMeteo,
         IHubContext<OrderHub> hubContext,
-        ILogger<DemandZoneCalculatorService> logger)
+        ILogger<WeatherMonitorService> logger)
     {
         _openMeteo = openMeteo;
         _hubContext = hubContext;
@@ -31,8 +27,7 @@ public class DemandZoneCalculatorService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Перший прогноз одразу при старті сервера, щоб не чекати хвилину
-        // до першого підключення клієнта.
+        // Перший прогноз одразу при старті.
         await BroadcastWeatherAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(Interval);

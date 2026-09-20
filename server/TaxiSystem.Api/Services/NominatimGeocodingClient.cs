@@ -4,16 +4,8 @@ using System.Text.Json;
 namespace TaxiSystem.Api.Services;
 
 /// <summary>
-/// Запасний безкоштовний геокодер (OpenStreetMap Nominatim, без ключа) —
-/// підключається, лише коли основний ORS Geocoding не дав результату
-/// (найчастіше через вичерпану добову квоту безкоштовного ключа ORS —
-/// сталось на практиці: {"error":"Quota exceeded"}). Nominatim вимагає
-/// ідентифікований User-Agent (див. реєстрацію HttpClient у Program.cs) і не
-/// перевіряється власним лімітом квоти нашого ORS-ключа — ідеально як
-/// резерв. Використовується лише як fallback, не основне джерело, щоб не
-/// перевантажувати чужий безкоштовний сервіс (політика використання
-/// Nominatim просить не більше ~1 запиту/сек, що для fallback-сценарію
-/// природно виконується).
+/// Запасний геокодер (OpenStreetMap Nominatim, без ключа), лише коли ORS Geocoding не дав результату.
+/// Потрібен ідентифікований User-Agent (див. Program.cs).
 /// </summary>
 public class NominatimGeocodingClient
 {
@@ -58,9 +50,7 @@ public class NominatimGeocodingClient
 
         if (nearLat is double lat0 && nearLng is double lng0)
         {
-            // viewbox + bounded=0 — те саме м'яке ранжування, що й focus.point в
-            // ORS: адреси біля опорної точки пріоритетні, але пошук лишається
-            // світовим (bounded=1 жорстко відкидав би все поза межами).
+            // viewbox без bounded — м'яке ранжування біля Львова, як і в ORS.
             var box = string.Join(',', new[]
             {
                 (lng0 - 0.5).ToString(CultureInfo.InvariantCulture),

@@ -7,12 +7,7 @@ using TaxiSystem.Api.Services;
 
 namespace TaxiSystem.Api.Controllers;
 
-/// <summary>
-/// "Збережені картки" пасажира — зручність для повторних замовлень, не
-/// реальна платіжна інтеграція. Повний номер картки приходить у тілі запиту
-/// лише для того, щоб узяти останні 4 цифри для маски — сервер його ніде
-/// не зберігає (ні тут, ні деінде в БД).
-/// </summary>
+
 [ApiController]
 [Route("api/saved-cards")]
 public class SavedCardsController : ControllerBase

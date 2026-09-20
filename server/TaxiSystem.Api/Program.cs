@@ -39,6 +39,7 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
     });
 
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<OpenMeteoClient>();
 builder.Services.AddHttpClient<OpenRouteServiceClient>();
 builder.Services.AddHttpClient<OpenRouteServiceGeocodingClient>();
@@ -51,7 +52,7 @@ builder.Services.AddHttpClient<NominatimGeocodingClient>(client =>
 });
 
 builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
-builder.Services.AddHostedService<DemandZoneCalculatorService>();
+builder.Services.AddHostedService<WeatherMonitorService>();
 
 builder.Services.AddCors(options =>
 {
@@ -64,9 +65,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Застосовує EF-міграції при старті — потрібно для PostgreSQL-хостингу, де файл
-// БД не можна просто "створити з моделі" (EnsureCreated) при кожному деплої:
-// схема має еволюціонувати керовано через `dotnet ef migrations`.
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

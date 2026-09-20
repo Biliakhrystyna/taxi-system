@@ -23,13 +23,10 @@ public class OrdersController : ControllerBase
 
     private const double MinimumFare = 50;
 
-    // Пряма відстань завжди коротша за реальну дорогу — цей
-    // коефіцієнт наближає її до типової міської дороги, коли ORS недоступний
-    // (вичерпана квота/мережева помилка) і реальну відстань дізнатись нізвідки.
+    // Пряма відстань коротша за реальну дорогу: коефіцієнт наближає її, коли ORS недоступний.
     private const double RoadDetourFactor = 1.3;
 
-    // Розумний дефолт, коли немає навіть координат (адреса введена вручну
-    // текстом, без вибору з автопідказок чи кліку на мапі) — типова поїздка в межах міста.
+    // Дефолтна відстань, коли немає координат (адреса введена вручну).
     private const double FallbackDistanceKm = 3.0;
 
     private readonly AppDbContext _db;
@@ -43,9 +40,7 @@ public class OrdersController : ControllerBase
         _ors = ors;
     }
 
-    /// <summary>Орієнтовна ціна — щоб пасажир бачив вартість ДО того, як
-    /// натисне "Сформувати замовлення"/оплату, а не вперше вже після
-    /// бронювання. Та сама формула, що й при реальному створенні замовлення.</summary>
+    /// <summary>Орієнтовна ціна до створення замовлення (та сама формула, що й при створенні).</summary>
     [HttpGet("quote")]
     public async Task<ActionResult<QuoteResponse>> Quote(
         [FromQuery] string carClass,
@@ -113,8 +108,7 @@ public class OrdersController : ControllerBase
     {
         if (role == "driver")
         {
-            // Власне активне замовлення водія має пріоритет і видиме лише йому —
-            // інші водії не повинні бачити чи чіпати чужий рейс, що вже в роботі.
+            // Власний активний рейс водія має пріоритет.
             var ownOrder = await _db.Orders
                 .Where(o => o.DriverEmail == email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled")
                 .OrderByDescending(o => o.CreatedAt)
@@ -122,9 +116,7 @@ public class OrdersController : ControllerBase
 
             if (ownOrder is not null) return Ok(ToResponse(ownOrder));
 
-            // Немає власного рейсу — пропонуємо найстаріше (FIFO) замовлення, що
-            // очікує водія, і лише свого класу авто: водій "lux" не повинен
-            // бачити замовлення класу "econom" і навпаки.
+            // Інакше — найстаріше (FIFO) замовлення, що очікує водія, лише його класу авто.
             var driver = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
 
             var waitingQuery = _db.Orders.Where(o => o.CurrentStatus == "waiting");
@@ -163,11 +155,7 @@ public class OrdersController : ControllerBase
     {
         if (request.NewStatus == "accepted")
         {
-            // Атомарний UPDATE прямо в БД замість "прочитати в C# → перевірити →
-            // записати": WHERE-умова й запис виконуються однією SQL-операцією,
-            // тож два водії, що одночасно тиснуть "Прийняти" на те саме
-            // замовлення, фізично не можуть обидва пройти перевірку — базі
-            // даних досить власного блокування рядка, гонка неможлива.
+            // Атомарний UPDATE: два водії не можуть одночасно прийняти те саме замовлення.
             var rowsUpdated = await _db.Orders
                 .Where(o => o.OrderId == orderId && (o.DriverEmail == null || o.DriverEmail == request.DriverEmail))
                 .ExecuteUpdateAsync(setters => setters
@@ -196,15 +184,6 @@ public class OrdersController : ControllerBase
         {
             order.EndTime = DateTime.Now.ToLongTimeString();
             order.PaymentStatus = order.PaymentMethod == "Готівка" ? "Оплачено готівкою (водію)" : "Оплачено карткою";
-
-            var passenger = await _db.Users.FirstOrDefaultAsync(u => u.Email == order.PassengerEmail);
-            if (passenger is not null) passenger.TotalTrips += 1;
-
-            if (order.DriverEmail is not null)
-            {
-                var driver = await _db.Users.FirstOrDefaultAsync(u => u.Email == order.DriverEmail);
-                if (driver is not null) driver.TotalTrips += 1;
-            }
         }
 
         await _db.SaveChangesAsync();
@@ -215,8 +194,7 @@ public class OrdersController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>Оцінка поїздки — лише пасажир, лише завершеної поїздки, лише
-    /// один раз (щоб не можна було "накрутити" водію рейтинг повторними викликами).</summary>
+   
     [HttpPost("{orderId}/rate")]
     public async Task<ActionResult<OrderResponse>> Rate(string orderId, RateOrderRequest request)
     {
@@ -258,9 +236,7 @@ public class OrdersController : ControllerBase
         o.PaymentMethod, o.PaymentStatus, o.DriverEmail, o.DriverName, o.EndTime,
         o.PickupLat, o.PickupLng, o.DestinationLat, o.DestinationLng, o.Rating);
 
-    /// <summary>Спільна формула тарифу для реального створення замовлення й
-    /// попереднього кошторису (Quote) — щоб ціна, яку бачить пасажир ДО
-    /// бронювання, завжди збігалася з тією, що реально спишеться.</summary>
+    
     private async Task<int> CalculateEstimatedCostAsync(
         string carClass, bool isBadWeather, bool safeRouteApplied, bool safeRouteMatchesStandard,
         double? pickupLat, double? pickupLng, double? destinationLat, double? destinationLng, CancellationToken ct)
@@ -278,14 +254,7 @@ public class OrdersController : ControllerBase
         return (int)Math.Max(MinimumFare, Math.Round(basePrice * weatherCoeff));
     }
 
-    /// <summary>
-    /// Реальна відстань по дорогах через ORS. Якщо координат немає (ручний
-    /// ввід адреси текстом) — розумний дефолт. Якщо координати є, але ORS
-    /// недоступний (вичерпана квота/мережева помилка) — не валимо замовлення
-    /// фіксованою ціною, а рахуємо наближену відстань по прямій між точками
-    /// (гаверсинова формула) із коефіцієнтом на типову звивистість міської
-    /// дороги — це набагато чесніше за фіксовану ціну незалежно від маршруту.
-    /// </summary>
+    /// <summary>Відстань по дорогах через ORS; без координат — дефолт, а без ORS — гаверсинус із коефіцієнтом звивистості.</summary>
     private async Task<double> ResolveDistanceKmAsync(
         double? pickupLat, double? pickupLng, double? destinationLat, double? destinationLng, CancellationToken ct)
     {
