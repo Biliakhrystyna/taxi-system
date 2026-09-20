@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Linq;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace TaxiSystem.Api.Services;
 
@@ -9,62 +10,45 @@ public record RoutePoint(double Lat, double Lng);
 public record SafeRouteResult(IReadOnlyList<RoutePoint> Points, int TurnCount, double DistanceMeters, string Source);
 
 /// <summary>
-/// Клієнт до OpenRouteService Directions API. На відміну від
-/// buildSimulatedSafeRoute у client/routeBuilder.ts (намальована синусоїда),
-/// тут запитуються кілька альтернативних маршрутів по справжніх дорогах
-/// (alternative_routes) і обирається той, що має найменше поворотів —
-/// менше гальмувань/маневрів на мокрому асфальті, менший ризик підковзування.
+/// Клієнт OpenRouteService Directions API: серед альтернативних маршрутів по справжніх дорогах
+/// обирає той, де найменше поворотів (менше маневрів на мокрій дорозі).
 /// </summary>
 public class OpenRouteServiceClient
 {
-    // /geojson-варіант ендпоінту: geometry одразу як GeoJSON LineString замість
-    // закодованого polyline-рядка (звичайний /v2/directions/driving-car параметра
-    // "geometry_format" не приймає — тільки цей окремий шлях).
+    // /geojson-варіант ендпоінту повертає геометрію одразу як GeoJSON LineString.
     private const string DirectionsUrl = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
 
-    /// <summary>
-    /// Типи кроків ORS (`steps[].type`), які вважаємо реальним "поворотом":
-    /// Left/Right/SharpLeft/SharpRight/EnterRoundabout/ExitRoundabout/UTurn.
-    /// Straight, KeepLeft/Right, Slight*, Depart, Arrive свідомо виключені —
-    /// це не маневри, що ризикують підковзуванням на мокрій дорозі.
-    /// Рахуємо за типом кроку (семантика ORS), а не за кутом на сирій
-    /// геометрії — геометрія містить точки вздовж природного вигину дороги,
-    /// що дало б хибно завищену кількість "поворотів".
-    /// </summary>
+    /// <summary>Типи кроків ORS, що рахуються поворотом (Left/Right/Sharp*/Roundabout/UTurn); рахуємо за типом кроку, а не за кутом геометрії.</summary>
     private static readonly HashSet<int> TurnStepTypes = new() { 0, 1, 2, 3, 7, 8, 9 };
 
+    /// <summary>Радіус (м) пошуку найближчої дороги до точки (типово 350 м).</summary>
+    private const int SnapRadiusMeters = 1000;
+
+    /// <summary>Час зберігання відповіді в кеші: той самий маршрут запитується кілька разів, а квота ORS обмежена.</summary>
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
+
     private readonly HttpClient _http;
+    private readonly IMemoryCache _cache;
     private readonly string? _apiKey;
     private readonly ILogger<OpenRouteServiceClient> _logger;
 
-    public OpenRouteServiceClient(HttpClient http, IConfiguration config, ILogger<OpenRouteServiceClient> logger)
+    public OpenRouteServiceClient(HttpClient http, IMemoryCache cache, IConfiguration config, ILogger<OpenRouteServiceClient> logger)
     {
         _http = http;
+        _cache = cache;
         _apiKey = config["OpenRouteService:ApiKey"];
         _logger = logger;
     }
 
-    /// <summary>
-    /// Стандартний (найшвидший) маршрут по справжніх дорогах — на відміну від
-    /// buildDirectRoute() на клієнті (пряма лінія "навпростець" по мапі, що
-    /// ігнорує будівлі/квартали/річки). Без запиту альтернатив — ORS сам
-    /// повертає єдиний оптимальний маршрут.
-    /// </summary>
+    private static string CacheKey(string kind, double fromLat, double fromLng, double toLat, double toLng) =>
+        FormattableString.Invariant($"ors:{kind}:{fromLat:F5},{fromLng:F5}>{toLat:F5},{toLng:F5}");
+
+    /// <summary>Стандартний (найшвидший) маршрут по справжніх дорогах.</summary>
     public Task<SafeRouteResult?> GetFastestRouteAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct = default)
         => RequestSingleRouteAsync(fromLat, fromLng, toLat, toLng, ct);
 
-    /// <summary>
-    /// Маршрут з найменшою кількістю поворотів серед альтернатив ORS (для
-    /// мокрої дороги) — на відміну від buildSimulatedSafeRoute() на клієнті
-    /// (намальована синусоїда без зв'язку з реальними поворотами).
-    /// Гарантовано не гірший за звичайний найшвидший маршрут за кількістю
-    /// поворотів: ORS у alternative_routes не завжди повертає той самий
-    /// "головний" варіант, що й звичайний запит без alternative_routes (сам
-    /// алгоритм пошуку альтернатив може піти іншим шляхом), тож без цієї
-    /// гарантії "безпечний" маршрут міг мати БІЛЬШЕ поворотів, ніж стандартний
-    /// (виявлено живою перевіркою — 8 проти 5 на реальних координатах).
-    /// </summary>
+    /// <summary>Маршрут з найменшою кількістю поворотів; не гірший за найшвидший (ORS не завжди повертає його серед альтернатив).</summary>
     public async Task<SafeRouteResult?> GetSafestRouteAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct = default)
     {
@@ -85,28 +69,40 @@ public class OpenRouteServiceClient
     private async Task<SafeRouteResult?> RequestSingleRouteAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct)
     {
+        var key = CacheKey("single", fromLat, fromLng, toLat, toLng);
+        if (_cache.TryGetValue(key, out SafeRouteResult? cached)) return cached;
+
         var body = new
         {
             coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
+            radiuses = new[] { SnapRadiusMeters, SnapRadiusMeters },
             instructions = true,
         };
 
         var features = await SendDirectionsRequestAsync(body, ct);
-        return features.Count > 0 ? features[0] : null;
+        var result = features.Count > 0 ? features[0] : null;
+        if (result is not null) _cache.Set(key, result, CacheDuration);
+        return result;
     }
 
     /// <summary>Порожній список, якщо ключ не задано чи сервіс недоступний.</summary>
     private async Task<List<SafeRouteResult>> RequestAlternativesAsync(
         double fromLat, double fromLng, double toLat, double toLng, CancellationToken ct)
     {
+        var key = CacheKey("alt", fromLat, fromLng, toLat, toLng);
+        if (_cache.TryGetValue(key, out List<SafeRouteResult>? cached) && cached is not null) return new List<SafeRouteResult>(cached);
+
         var body = new
         {
             coordinates = new[] { new[] { fromLng, fromLat }, new[] { toLng, toLat } },
+            radiuses = new[] { SnapRadiusMeters, SnapRadiusMeters },
             alternative_routes = new { target_count = 3, weight_factor = 1.6, share_factor = 0.6 },
             instructions = true,
         };
 
-        return await SendDirectionsRequestAsync(body, ct);
+        var results = await SendDirectionsRequestAsync(body, ct);
+        if (results.Count > 0) _cache.Set(key, new List<SafeRouteResult>(results), CacheDuration);
+        return results;
     }
 
     private async Task<List<SafeRouteResult>> SendDirectionsRequestAsync(object body, CancellationToken ct)
@@ -129,14 +125,17 @@ public class OpenRouteServiceClient
             request.Headers.TryAddWithoutValidation("Authorization", _apiKey);
 
             using var response = await _http.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("OpenRouteService відповів {Status}: {Body}", (int)response.StatusCode, errorBody);
+                return results;
+            }
 
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
-            // /geojson-відповідь — FeatureCollection: кожна альтернатива маршруту
-            // це окремий Feature (geometry — LineString напряму на фічі,
-            // segments/summary — під properties, а не поряд із geometry).
+            // /geojson-відповідь: кожна альтернатива — окремий Feature.
             foreach (var feature in doc.RootElement.GetProperty("features").EnumerateArray())
             {
                 var points = ExtractPoints(feature);
@@ -152,8 +151,8 @@ public class OpenRouteServiceClient
         catch (Exception ex)
         {
             // ORS недоступний / вичерпано ліміт / мережева помилка — не валимо
-            // запит клієнта, повертаємось до симуляції на клієнті.
-            _logger.LogWarning(ex, "OpenRouteService недоступний, повертаємось до симуляції маршруту.");
+            // запит клієнта, повертаємо порожній результат (клієнт покаже пряму лінію).
+            _logger.LogWarning(ex, "OpenRouteService недоступний, маршрут не побудовано.");
         }
 
         return results;
@@ -184,8 +183,6 @@ public class OpenRouteServiceClient
     {
         var points = new List<RoutePoint>();
 
-        // feature.geometry — завжди GeoJSON LineString {"type":...,"coordinates":[[lng,lat],...]}
-        // на цьому /geojson-ендпоінті.
         if (!feature.TryGetProperty("geometry", out var geometry)) return points;
         if (!geometry.TryGetProperty("coordinates", out var coordinates)) return points;
         if (coordinates.ValueKind != JsonValueKind.Array) return points;

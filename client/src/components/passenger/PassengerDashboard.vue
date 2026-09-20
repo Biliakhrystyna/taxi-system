@@ -1,12 +1,12 @@
 <template>
   <div class="screen-card passenger-box">
     <h2>📱 Панель пасажира (Створення замовлення)</h2>
-    <div class="weather-simulator" style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
-      <span style="font-size: 13px; color: #94a3b8;">Поточна погода в місті:</span>
-      <button type="button" class="btn" :style="orderStore.isBadWeather ? 'background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #f87171;' : 'background: rgba(234, 179, 8, 0.1); border-color: #eab308; color: #fde047;'" @click="orderStore.toggleWeather()">
-        <span v-if="orderStore.isBadWeather">🌧️ Сильна злива (Безпечний режим ON)</span>
-        <span v-else>☀️ Сонячно (Звичайний режим)</span>
-      </button>
+    <div class="weather-status" style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+      <span style="font-size: 13px; font-weight: 700; color: #000000;">{{ orderStore.destinationCoords ? 'Погода на маршруті:' : 'Поточна погода:' }}</span>
+      <span v-if="orderStore.isBadWeather" style="font-size: 12px; font-weight: 800; color: #ffffff; background: #dc2626; border: 1px solid #000000; padding: 4px 10px; border-radius: 6px; text-align: right;">
+        ⚠️ Небезпечно{{ orderStore.weatherReason ? ': ' + orderStore.weatherReason : '' }}
+      </span>
+      <span v-else style="font-size: 12px; font-weight: 800; color: #ffffff; background: #16a34a; border: 1px solid #000000; padding: 4px 10px; border-radius: 6px;">☀️ Без небезпеки, дорога суха</span>
     </div>
 
     <div v-if="!orderStore.currentOrder || !orderStore.currentOrder.order_id" class="booking-form">
@@ -120,9 +120,9 @@
 
     <div v-if="orderStore.currentOrder && orderStore.currentOrder.order_id" class="active-order-box">
       <h3>Статус замовлення: <span class="badge" :class="orderStore.currentOrder.current_status">{{ translateOrderStatus(orderStore.currentOrder.current_status) }}</span></h3>
-      <p><strong>Звідки (А):</strong> {{ orderStore.currentOrder.pickup_location }}</p>
-      <p><strong>Куди (B):</strong> {{ orderStore.currentOrder.destination }}</p>
-      <p><strong>Вартість поїздки:</strong> <span class="price-text">{{ orderStore.currentOrder.estimated_cost }} грн</span></p>
+      <p><strong>Звідки (А):</strong> <span class="person-name">{{ orderStore.currentOrder.pickup_location }}</span></p>
+      <p><strong>Куди (B):</strong> <span class="person-name">{{ orderStore.currentOrder.destination }}</span></p>
+      <p><strong>Вартість поїздки:</strong> {{ orderStore.currentOrder.estimated_cost }} грн</p>
       <p><strong>Тип оплати:</strong> {{ orderStore.currentOrder.payment_method || 'Готівка' }}</p>
       <p><strong>Статус транзакції:</strong>
         <span class="badge" :class="orderStore.currentOrder.payment_status && orderStore.currentOrder.payment_status.includes('Оплачено') ? 'paid' : 'pending'">
@@ -133,7 +133,7 @@
       <div class="tags-container">
         <span v-if="orderStore.currentOrder.safe_route_applied" class="tag safe-tag">🛡️ Безпечний маршрут активовано</span>
       </div>
-      <p v-if="orderStore.currentOrder.driver_name" style="color: #000000; margin-top: 10px;">👨‍✈️ Призначений водій: {{ orderStore.currentOrder.driver_name }}</p>
+      <p v-if="orderStore.currentOrder.driver_name" style="color: #000000; margin-top: 10px;">👨‍✈️ Призначений водій: <span class="person-name">{{ orderStore.currentOrder.driver_name }}</span></p>
 
       <button
         v-if="['waiting', 'accepted'].includes(orderStore.currentOrder.current_status)"
@@ -175,7 +175,7 @@ const onDestinationSelect = (address: GeocodedAddress) => {
 };
 
 // "Збережені картки" — зручність, не реальна платіжна інтеграція (сервер
-// зберігає лише замасковані останні 4 цифри, див. SavedCardsController.cs).
+// зберігає лише замасковані останні 4 цифри).
 const savedCards = ref<SavedCard[]>([]);
 const selectedCardId = ref<number | 'new'>('new');
 const rememberCard = ref(false);
@@ -199,12 +199,11 @@ const removeSavedCard = async (id: number) => {
     savedCards.value = savedCards.value.filter((c) => c.id !== id);
     if (selectedCardId.value === id) selectedCardId.value = 'new';
   } catch {
-    // Не вдалось видалити — картка лишиться в списку до перезавантаження сторінки.
+    
   }
 };
 
-// Алгоритм Луна — стандартна контрольна сума номерів карток (не справжній
-// процесинг, лише перевірка формату — див. коментар у SavedCardsController.cs).
+// Алгоритм Луна — стандартна контрольна сума номерів карток.
 const luhnCheck = (digits: string): boolean => {
   let sum = 0;
   let shouldDouble = false;
@@ -222,14 +221,13 @@ const luhnCheck = (digits: string): boolean => {
 
 const validateNewCard = (): string | null => {
   const raw = orderStore.cardNumber.trim();
-  // Раніше літери просто ігнорувались при підрахунку цифр — рядок типу
-  // "abcd4111111111112222xyz" міг випадково дати рівно 16 цифр і пройти.
+
   if (!/^[\d\s]+$/.test(raw)) return 'Некоректний номер картки: лише цифри.';
 
   const digits = raw.replace(/\s/g, '');
   if (digits.length !== 16) return 'Некоректний номер картки: має бути 16 цифр.';
   // Луна саму послідовність однакових цифр (напр. усі нулі) вважає коректною
-  // математично — тому окремо відсіюємо явно фейкові номери цим патерном.
+  // математично — тому окремо відсіє явно фейкові номери цим патерном.
   if (/^(\d)\1{15}$/.test(digits)) return 'Некоректний номер картки.';
   if (!luhnCheck(digits)) return 'Некоректний номер картки.';
 
@@ -252,9 +250,7 @@ const validateNewCard = (): string | null => {
   return null;
 };
 
-// Індикатор "✅ верифіковано" раніше перевіряв лише довжину рядків (навіть
-// без CVV чи з місяцем "13" показував "успішно") — тепер відображає
-// результат тієї самої функції, що й реально блокує сабміт.
+
 const isNewCardValid = computed(() => validateNewCard() === null);
 
 const submitOrder = async () => {
@@ -277,7 +273,7 @@ const submitOrder = async () => {
       selectedCardId.value = saved.id;
       rememberCard.value = false;
     } catch {
-      // Не вдалось зберегти картку — не блокуємо через це створення замовлення.
+     
     }
   }
 

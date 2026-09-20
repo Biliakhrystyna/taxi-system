@@ -8,5 +8,5 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: 'Скасовано',
 };
 
-/** Людський переклад статусу замовлення для відображення (клас .badge лишається англійським — це CSS-хук). */
+
 export const translateOrderStatus = (status: OrderStatus): string => STATUS_LABELS[status] ?? status;

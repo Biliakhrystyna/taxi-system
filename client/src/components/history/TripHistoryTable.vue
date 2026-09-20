@@ -1,6 +1,6 @@
 <template>
   <div class="screen-card history-box">
-    <h2>📜 Історія виконаних поїздок</h2>
+    <h2>📜 Історія  поїздок</h2>
 
     <div v-if="authStore.currentUser?.role === 'passenger' && orderStore.passengerTrips.length === 0" class="no-data">Історія поїздок порожня.</div>
     <div v-if="authStore.currentUser?.role === 'driver' && orderStore.driverTrips.length === 0" class="no-data">Ви ще не виконали жодного рейсу.</div>
@@ -18,7 +18,7 @@
       </thead>
       <tbody>
         <tr v-for="trip in (authStore.currentUser?.role === 'passenger' ? orderStore.passengerTrips : orderStore.driverTrips)" :key="trip.order_id">
-          <td>{{ trip.order_id.substring(4, 10) }}...</td>
+          <td :title="trip.order_id">{{ trip.order_id.slice(-8) }}</td>
           <td>{{ trip.destination }}</td>
 
           <td style="color: #10b981; font-weight: bold;">{{ trip.estimated_cost }} грн</td>

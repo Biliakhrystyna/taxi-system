@@ -3,19 +3,6 @@ export interface LatLng {
   lng: number;
 }
 
-/** Узагальнена кругова область на мапі (координати + радіус у метрах) —
- * використовується геопросторовим модулем фільтрації (geoFilter.ts). */
-export interface RadiusZone extends LatLng {
-  radius: number;
-}
-
-export interface MapBounds {
-  north: number;
-  south: number;
-  east: number;
-  west: number;
-}
-
 /** Реальний маршрут по дорогах з бекенду (OpenRouteServiceClient)  */
 export interface SafeRouteResult {
   points: LatLng[];
@@ -29,4 +16,18 @@ export interface GeocodedAddress {
   label: string;
   lat: number;
   lng: number;
+}
+
+/** Прогноз небезпеки для контрольної точки маршруту (POST /api/weather/route). */
+export interface RoutePointForecast extends LatLng {
+  hazard_level: 'HIGH' | 'NORMAL';
+  precipitation_mm: number;
+  source: string;
+  reason: string;
+}
+
+/** Суцільна небезпечна ділянка маршруту — лінія та причини небезпеки. */
+export interface HazardStretch {
+  points: LatLng[];
+  reason: string;
 }

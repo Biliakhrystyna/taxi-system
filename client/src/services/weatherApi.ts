@@ -1,10 +1,10 @@
 import { http } from './http';
+import type { LatLng, RoutePointForecast } from '../types/geo';
 
 export interface WeatherForecast {
   hazard_level: 'HIGH' | 'NORMAL';
   precipitation_mm: number;
   source: string;
-  /*Пояснення, чому HIGH/NORMAL — опади, ожеледиця, іній тощо. */
   reason: string;
 }
 
@@ -14,4 +14,7 @@ export const weatherApi = {
     const query = lat !== undefined && lng !== undefined ? `?lat=${lat}&lng=${lng}` : '';
     return http.get<WeatherForecast>(`/api/weather/forecast${query}`);
   },
+  /** Прогноз небезпеки для контрольних точок маршруту одним запитом. */
+  getRouteForecast: (points: LatLng[]) =>
+    http.post<RoutePointForecast[]>('/api/weather/route', { points }),
 };

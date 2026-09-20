@@ -2,12 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace TaxiSystem.Api.Services;
 
-/// <summary>
-/// Валідація номера водійського посвідчення: українське пластикове —
-/// 3 літери + 6 цифр (9 символів), без пробілів/дефісів/крапок. Регістр
-/// літер завжди приводиться до верхнього, щоб у базі зберігався один
-/// стандартизований формат незалежно від того, як ввів користувач.
-/// </summary>
+/// <summary>Валідація посвідчення водія: 3 літери + 6 цифр; регістр приводиться до верхнього.</summary>
 public static class DriverLicenseNumber
 {
     private static readonly Regex Pattern = new(@"^[A-ZА-ЯҐЄІЇ]{3}\d{6}$", RegexOptions.Compiled);
@@ -17,9 +12,7 @@ public static class DriverLicenseNumber
         normalized = string.Empty;
         if (string.IsNullOrWhiteSpace(raw)) return false;
 
-        // Пробіли (напр. "BXX 123456", як підказує плейсхолдер у формі)
-        // прибираємо перед перевіркою — це єдиний символ, який толеруємо.
-        // Дефіси, крапки чи будь-що інше лишається в рядку і провалює regex.
+        // Пробіли прибираємо, інші символи провалюють перевірку.
         var candidate = raw.Replace(" ", "").ToUpperInvariant();
 
         if (!Pattern.IsMatch(candidate)) return false;

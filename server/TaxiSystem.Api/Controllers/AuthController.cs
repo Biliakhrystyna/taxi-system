@@ -37,9 +37,7 @@ public class AuthController : ControllerBase
 
         if (existing is not null)
         {
-            // Акаунт з таким email уже є — та сама людина може додати другу
-            // роль (стати ще й водієм/пасажиром) на той самий обліковий запис
-            // замість дубліката, але лише підтвердивши, що це справді вона.
+       
             if (!_passwordHasher.Verify(request.Password, existing.PasswordHash))
             {
                 return Conflict("Користувач з таким email вже зареєстрований.");
@@ -75,7 +73,7 @@ public class AuthController : ControllerBase
             }
 
             await _db.SaveChangesAsync();
-            return Ok(ToResponse(existing, request.Role));
+            return Ok(await ToResponseAsync(existing, request.Role));
         }
 
         if (!PhoneNumber.TryNormalize(request.Phone, out var normalizedPhone))
@@ -106,7 +104,6 @@ public class AuthController : ControllerBase
             EmailConfirmed = false,
             VerificationCode = code,
             VerificationCodeExpiresAt = DateTime.UtcNow.Add(CodeLifetime),
-            TotalTrips = 0,
             LicenseNumber = normalizedLicense,
             DriverCarClass = request.Role == "driver" ? request.DriverCarClass : null,
         };
@@ -116,16 +113,13 @@ public class AuthController : ControllerBase
 
         await _email.SendVerificationCodeAsync(user.Email, code, HttpContext.RequestAborted);
 
-        return Ok(ToResponse(user, request.Role));
+        return Ok(await ToResponseAsync(user, request.Role));
     }
 
     [HttpPost("login")]
     public async Task<ActionResult<UserResponse>> Login(LoginRequest request)
     {
-        // Identifier — email або телефон. За наявністю "@" визначаємо, який
-        // саме стовпець шукати; телефон нормалізується так само, як при
-        // реєстрації, щоб "0671234567"/"+380671234567" знаходили той самий
-        // рядок незалежно від того, як саме користувач його вписав зараз.
+        // За наявністю "@" шукаємо за email, інакше за нормалізованим телефоном.
         User? user;
         if (request.Identifier.Contains('@'))
         {
@@ -145,8 +139,7 @@ public class AuthController : ControllerBase
             return Unauthorized("Невірний email/телефон або пароль.");
         }
 
-        // Один email тепер може мати обидві ролі одночасно — перевіряємо, чи
-        // саме ту роль, під якою намагаються увійти, увімкнено на акаунті.
+        // Один email може мати обидві ролі — перевіряємо, що потрібна роль увімкнена.
         var hasRole = request.Role == "driver" ? user.IsDriver : user.IsPassenger;
         if (!hasRole)
         {
@@ -156,9 +149,7 @@ public class AuthController : ControllerBase
 
         if (!user.EmailConfirmed)
         {
-            // 403, не 401 — клієнту потрібно відрізнити "невірний пароль" від
-            // "пароль вірний, але пошта не підтверджена", щоб повести на екран
-            // введення коду, а не в глухий кут із загальною помилкою.
+           
             return StatusCode(403, "Пошту ще не підтверджено. Введіть код, надісланий на email.");
         }
 
@@ -167,13 +158,10 @@ public class AuthController : ControllerBase
             return Conflict(ActiveOrderConflictMessage(request.Role));
         }
 
-        return Ok(ToResponse(user, request.Role));
+        return Ok(await ToResponseAsync(user, request.Role));
     }
 
-    /// <summary>Формат і унікальність номера посвідчення водія: 3 літери + 6
-    /// цифр (регістр приводиться до верхнього), і воно не повинно вже
-    /// належати іншому акаунту — одне посвідчення не може "возити" двох
-    /// різних зареєстрованих водіїв.</summary>
+    /// <summary>Формат (3 літери + 6 цифр) і унікальність номера посвідчення водія.</summary>
     private async Task<(string? Normalized, ActionResult? Error)> ValidateDriverLicenseAsync(string? rawLicense, string ownerEmail)
     {
         if (!DriverLicenseNumber.TryNormalize(rawLicense, out var normalized))
@@ -190,9 +178,7 @@ public class AuthController : ControllerBase
         return (normalized, null);
     }
 
-    /// <summary>Не можна одночасно бути водієм у поїздці й пасажиром, що
-    /// замовляє нову — перш ніж пустити в іншу роль, переконуємось, що в
-    /// протилежній ролі немає незавершеного рейсу.</summary>
+    /// <summary>Не пускає в іншу роль, поки в протилежній є незавершений рейс.</summary>
     private Task<bool> HasActiveOrderInOtherRoleAsync(string email, string requestedRole) =>
         requestedRole == "driver"
             ? _db.Orders.AnyAsync(o => o.PassengerEmail == email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled")
@@ -205,8 +191,7 @@ public class AuthController : ControllerBase
         return $"У вас є активна поїздка в ролі {otherRoleLabel} — завершіть її, перш ніж заходити як {requestedRoleLabel}.";
     }
 
-    /// <summary>Одноразове підтвердження пошти кодом з листа — після успіху вхід
-    /// більше жодного коду не вимагає (EmailConfirmed лишається true назавжди).</summary>
+    /// <summary>Одноразове підтвердження пошти кодом з листа.</summary>
     [HttpPost("verify-email")]
     public async Task<ActionResult<UserResponse>> VerifyEmail(VerifyEmailRequest request)
     {
@@ -215,7 +200,7 @@ public class AuthController : ControllerBase
 
         if (user.EmailConfirmed)
         {
-            return Ok(ToResponse(user));
+            return Ok(await ToResponseAsync(user));
         }
 
         if (user.VerificationCode != request.Code || user.VerificationCodeExpiresAt < DateTime.UtcNow)
@@ -228,7 +213,7 @@ public class AuthController : ControllerBase
         user.VerificationCodeExpiresAt = null;
         await _db.SaveChangesAsync();
 
-        return Ok(ToResponse(user));
+        return Ok(await ToResponseAsync(user));
     }
 
     /// <summary>Новий код, якщо лист не дійшов/код прострочився.</summary>
@@ -249,10 +234,7 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Той самий одноразовий код, тепер для відновлення пароля.
-    /// Навмисно завжди повертає 204 — не розкриває, чи існує такий email
-    /// (лист іде лише якщо акаунт справді є), щоб не давати спосіб перебором
-    /// з'ясовувати зареєстровані адреси.</summary>
+ 
     [HttpPost("forgot-password")]
     public async Task<ActionResult> ForgotPassword(ForgotPasswordRequest request)
     {
@@ -287,17 +269,16 @@ public class AuthController : ControllerBase
         }
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
-        // Успішний код на цю пошту — та сама доказовість, що й при реєстрації,
-        // тож заразом підтверджуємо email, якщо він ще не був підтверджений.
+        // Успішний код підтверджує й сам email.
         user.EmailConfirmed = true;
         user.VerificationCode = null;
         user.VerificationCodeExpiresAt = null;
         await _db.SaveChangesAsync();
 
-        return Ok(ToResponse(user));
+        return Ok(await ToResponseAsync(user));
     }
 
-    /// <summary>Викликається після проходження "верифікації водія" на клієнті.</summary>
+   
     [HttpPost("verify-driver/{email}")]
     public async Task<ActionResult<UserResponse>> VerifyDriver(string email)
     {
@@ -307,15 +288,20 @@ public class AuthController : ControllerBase
         user.Status = "active";
         await _db.SaveChangesAsync();
 
-        return Ok(ToResponse(user, "driver"));
+        return Ok(await ToResponseAsync(user, "driver"));
     }
 
-    /// <summary>`role` — під якою роллю відповідь трактується на клієнті цього
-    /// запиту (сесія може оперувати лише однією роллю за раз, навіть якщо в
-    /// акаунту ввімкнені обидві). Без явного значення — найкращий здогад:
-    /// водій, якщо ця роль є, інакше пасажир.</summary>
-    private static UserResponse ToResponse(User u, string? role = null) => new(
-        u.Email, u.FirstName, u.LastName, u.Phone,
-        role ?? (u.IsDriver ? "driver" : "passenger"),
-        u.Status, u.EmailConfirmed, u.TotalTrips, u.LicenseNumber, u.DriverCarClass, u.IsPassenger, u.IsDriver);
+   
+    private async Task<UserResponse> ToResponseAsync(User u, string? role = null)
+    {
+        var effectiveRole = role ?? (u.IsDriver ? "driver" : "passenger");
+
+        var totalTrips = effectiveRole == "driver"
+            ? await _db.Orders.CountAsync(o => o.DriverEmail == u.Email && o.CurrentStatus == "completed")
+            : await _db.Orders.CountAsync(o => o.PassengerEmail == u.Email && o.CurrentStatus == "completed");
+
+        return new UserResponse(
+            u.Email, u.FirstName, u.LastName, u.Phone, effectiveRole,
+            u.Status, u.EmailConfirmed, totalTrips, u.LicenseNumber, u.DriverCarClass, u.IsPassenger, u.IsDriver);
+    }
 }

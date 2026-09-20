@@ -14,7 +14,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useOrderStore } from '../stores/orderStore';
 import type { LatLng } from '../types/geo';
-import { buildDirectRoute, buildSimulatedSafeRoute } from './map/geo/routeBuilder';
+import { buildDirectRoute } from './map/geo/routeBuilder';
 import { routingApi } from '../services/routingApi';
 import { geocodingApi } from '../services/geocodingApi';
 import { LVIV_CENTER } from '../config';
@@ -30,27 +30,37 @@ let map: L.Map | null = null;
 let markerA: L.Marker | null = null;
 let markerB: L.Marker | null = null;
 let routeLine: L.Polyline | null = null;
+let hazardLayer: L.LayerGroup | null = null;
 
-// drawRoute чекає відповіді ORS (асинхронно) — якщо замовлення завершилось
-// чи змінилось ПОКИ запит ще летів, стара відповідь інакше домальовується
-// на мапу вже ПІСЛЯ того, як усе мало очиститись ("маршрут попередньої
-// поїздки висить"). Токен інвалідовує будь-який виклик, застарілий на
-// момент, коли відповідь нарешті прийшла.
+// Небезпечні ділянки стандартного маршруту (результат геопросторової
+// фільтрації в orderStore.loadRouteHazards) — червоні відрізки поверх лінії.
+const drawHazards = () => {
+  hazardLayer?.clearLayers();
+  if (!map || !hazardLayer || props.role !== 'passenger') return;
+  if (orderStore.useSafeRoute && orderStore.isBadWeather) return;
+
+  for (const stretch of orderStore.routeHazards) {
+    L.polyline(stretch.points, { color: '#ef4444', weight: 7, opacity: 0.9, pane: 'hazard' })
+      .bindTooltip(`⚠️ Небезпечна ділянка: ${stretch.reason}`, { sticky: true })
+      .addTo(hazardLayer);
+  }
+};
+
+
 let routeDrawToken = 0;
 const invalidatePendingRoute = () => { routeDrawToken++; };
 
-// Універсальна функція малювання лінії маршруту (для пасажира і водія)
+
 const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
   if (!map) return;
   const myToken = ++routeDrawToken;
   if (routeLine) map.removeLayer(routeLine);
 
   if (isSafeApplied && orderStore.isBadWeather) {
-    // Спершу пробуємо реальний маршрут по дорогах з мінімумом поворотів
-    // (OpenRouteServiceClient на бекенді). Якщо ORS недоступний/без ключа —
-    // падаємо на клієнтську симуляцію (синусоїда), як і раніше.
+    // Реальний маршрут по дорогах з мінімумом поворотів (OpenRouteServiceClient
+    // на бекенді). 
     let points: LatLng[] = [];
-    let popupLabel = '🛡️ Безпечний маршрут: симуляція обходу (ORS недоступний)';
+    let popupLabel = '🛡️ Безпечний маршрут недоступний (ORS) — показано пряму лінію';
 
     try {
       const safeRoute = await routingApi.getSafeRoute(a, b);
@@ -59,16 +69,14 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
         popupLabel = `🛡️ Безпечний маршрут (ORS): ${safeRoute.turn_count} поворотів`;
       }
     } catch {
-      // Мережева помилка/сервер лежить — тихо падаємо на симуляцію нижче.
+     
     }
 
     if (points.length === 0) {
-      points = buildSimulatedSafeRoute(a, b);
+      points = buildDirectRoute(a, b);
     }
 
-    // Компонент міг демонтуватись, або новіший виклик drawRoute (чи повне
-    // очищення при зміні/завершенні замовлення) уже стартував, поки ми
-    // чекали відповідь — ця відповідь застаріла, малювати її не можна.
+
     if (!map || myToken !== routeDrawToken) return;
 
     routeLine = L.polyline(points, {
@@ -82,8 +90,7 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
       markerB.setPopupContent(`🏁 Точка В<br><b style="color: #f97316;">${popupLabel}</b>`).openPopup();
     }
   } else {
-    // Так само пробуємо реальний маршрут по дорогах (ORS) замість прямої
-    // лінії "навпростець" по мапі; якщо ORS недоступний — падаємо на пряму лінію.
+ 
     let points: LatLng[] = [];
     let popupLabel = '✨ Стандартний шлях (пряма лінія — ORS недоступний)';
 
@@ -94,15 +101,14 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
         popupLabel = '✨ Стандартний найкоротший шлях (по дорогах)';
       }
     } catch {
-      // Мережева помилка/сервер лежить — тихо падаємо на пряму лінію нижче.
+      
     }
 
     if (points.length === 0) {
       points = buildDirectRoute(a, b);
     }
 
-    if (!map || myToken !== routeDrawToken) return; // застарілий виклик — див. коментар вище
-
+    if (!map || myToken !== routeDrawToken) return; 
     routeLine = L.polyline(points, {
       color: '#38bdf8',
       weight: 4,
@@ -115,16 +121,13 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
   }
 };
 
-// Єдина точка входу для встановлення точки А — байдуже, прийшли координати
-// з кліку на мапі чи з вибору в автопідказках адреси (AddressAutocomplete
-// у PassengerDashboard.vue пише напряму в orderStore.pickupCoords).
 const placePickupPoint = async (coords: LatLng) => {
   if (!map) return;
   if (markerA) map.removeLayer(markerA);
   markerA = L.marker([coords.lat, coords.lng]).addTo(map).bindPopup('📍 Точка А (Звідки)').openPopup();
+  map.setView([coords.lat, coords.lng], Math.max(map.getZoom(), 13));
 
-  // Адресу вже могли підставити з автопідказок (тоді вона не порожня) —
-  // зворотне геокодування потрібне лише для кліку "наосліп" по мапі.
+  // Адресу вже могли підставити з автопідказок (тоді вона не порожня) 
   if (!orderStore.pickupLocation.trim()) {
     try {
       const address = await geocodingApi.reverse(coords.lat, coords.lng);
@@ -134,12 +137,11 @@ const placePickupPoint = async (coords: LatLng) => {
     }
   }
 
-  // Реальна погода саме в точці відправлення, а не в опорній точці Львова —
+  // Реальна погода саме в точці відправлення —
   // щоб можна було демонструвати реальні опади, обравши будь-яку адресу.
   orderStore.fetchWeatherHazard(coords.lat, coords.lng);
 
-  // Якщо точка Б вже стояла (з попереднього кліку чи пошуку) — маршрут мав
-  // перемалюватись під нову точку А, а не лишатись приклеєним до старої.
+ 
   if (markerB) {
     drawRoute(coords, markerB.getLatLng(), orderStore.useSafeRoute);
   }
@@ -149,6 +151,7 @@ const placeDestinationPoint = async (coords: LatLng) => {
   if (!map || !markerA) return;
   if (markerB) map.removeLayer(markerB);
   markerB = L.marker([coords.lat, coords.lng]).addTo(map).bindPopup('🏁 Точка В (Куди)').openPopup();
+  map.fitBounds(L.latLngBounds([markerA.getLatLng(), coords]), { padding: [40, 40], maxZoom: 15 });
 
   if (!orderStore.destinationLocation.trim()) {
     try {
@@ -166,16 +169,20 @@ onMounted(() => {
   map = L.map('map').setView([LVIV_CENTER.lat, LVIV_CENTER.lng], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
+  map.createPane('hazard').style.zIndex = '450';
+  hazardLayer = L.layerGroup().addTo(map);
+
+
   if (props.role === 'passenger') {
-    // Клік лише пише координати в стор — саме розміщення маркера/геокодування
-    // відбувається у watch() нижче, тій самій точці входу, що й вибір адреси
-    // з автопідказок (AddressAutocomplete у PassengerDashboard.vue).
+    if (orderStore.pickupCoords) placePickupPoint(orderStore.pickupCoords);
+    if (orderStore.destinationCoords) placeDestinationPoint(orderStore.destinationCoords);
+  }
+
+  if (props.role === 'passenger') {
+    
     map.on('click', (e) => {
       // Поки є активне замовлення — точки А/Б лишаються "заморожені" до кінця
       // поїздки (завершення/скасування), клік по мапі більше їх не чіпає.
-      // Раніше третій клік завжди повністю скидав обидві точки, навіть якщо
-      // вони обидві вже належали активному замовленню — це виглядало так,
-      // ніби точки "самі зникають" від випадкового кліку по мапі.
       if (orderStore.currentOrder && orderStore.currentOrder.order_id) return;
 
       const { lat, lng } = e.latlng;
@@ -205,7 +212,7 @@ watch(
       return;
     }
 
-    // Скинуто ззовні (третій клік / "Очистити поточне замовлення") — прибираємо все.
+    // Скинуто ззовні (третій клік / "Очистити поточне замовлення") — прибирає все.
     invalidatePendingRoute();
     if (markerA) { map?.removeLayer(markerA); markerA = null; }
     if (markerB) { map?.removeLayer(markerB); markerB = null; }
@@ -234,12 +241,7 @@ watch(
   (newOrder) => {
     if (!map || props.role === 'passenger') return;
 
-    // Завжди прибираємо попередні маркери/маршрут перед тим, як малювати
-    // нові — інакше при переході з одного активного замовлення напряму на
-    // інше (без проміжного "немає замовлення", напр. коли перехопили
-    // замовлення, яке я саме розглядав) старий маркер лишався на СТАРИХ
-    // координатах, а лінія маршруту вже малювалась до нових — водій бачив
-    // неузгоджену картинку, ніби "чийсь чужий" маршрут.
+
     invalidatePendingRoute();
     if (markerA) { map.removeLayer(markerA); markerA = null; }
     if (markerB) { map.removeLayer(markerB); markerB = null; }
@@ -263,6 +265,8 @@ watch(
   },
   { deep: true },
 );
+
+watch(() => [orderStore.routeHazards, orderStore.useSafeRoute, orderStore.isBadWeather], drawHazards, { deep: true });
 
 watch(
   () => orderStore.useSafeRoute,

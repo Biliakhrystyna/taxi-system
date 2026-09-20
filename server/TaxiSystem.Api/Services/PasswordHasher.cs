@@ -1,7 +1,6 @@
 namespace TaxiSystem.Api.Services;
 
-/// <summary>Тонка обгортка над BCrypt.Net-Next — вимога ТЗ щодо криптографічного
-/// хешування паролів.</summary>
+
 public interface IPasswordHasher
 {
     string Hash(string plainPassword);

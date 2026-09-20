@@ -10,7 +10,7 @@
       <p style="color: #e2e8f0; font-size: 14px; line-height: 1.6; text-align: center;">
         Система виявила <b style="color: #f87171;">небезпечні погодні умови на дорозі</b>{{ orderStore.weatherReason ? ' (' + orderStore.weatherReason + ')' : '' }}.
         <template v-if="orderStore.routesCoincide">
-          Об'їзду з меншою кількістю поворотів для цієї ділянки не знайдено — стандартний і безпечний маршрут системи збігаються. Попри це, дорога може бути слизькою: керуйте обережно.
+          Об'їзд з меншою кількістю поворотів для цієї ділянки збігається із стандартним маршрутом системи. Попри це, дорога може бути слизькою: керуйте обережно.
         </template>
         <template v-else>
           Розраховано альтернативний маршрут в обхід критичних ділянок дороги.
@@ -18,7 +18,13 @@
       </p>
 
       <div style="background: rgba(30, 41, 59, 0.6); padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #334155;">
-        <template v-if="orderStore.routeComparison && orderStore.routeComparison.standardKm !== null && orderStore.routeComparison.safeKm !== null">
+        <template v-if="orderStore.routesCoincide && orderStore.routeComparison">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span style="color: #38bdf8;">🛣️ Єдиний маршрут:</span>
+            <span style="font-weight: bold;">{{ orderStore.routeComparison.standardKm?.toFixed(1) }} км, {{ orderStore.routeComparison.standardTurns }} поворотів</span>
+          </div>
+        </template>
+        <template v-else-if="orderStore.routeComparison && orderStore.routeComparison.standardKm !== null && orderStore.routeComparison.safeKm !== null">
           <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px;">
             <span style="color: #38bdf8;">🔵 Стандартний шлях:</span>
             <span style="font-weight: bold;">{{ orderStore.routeComparison.standardKm.toFixed(1) }} км, {{ orderStore.routeComparison.standardTurns }} поворотів</span>
@@ -43,7 +49,16 @@
         </template>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+      <div v-if="orderStore.routesCoincide" style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+        <button class="btn" style="background: #f97316; color: white; font-weight: bold; padding: 12px;" @click="orderStore.useSafeRoute = false; orderStore.showAIWarning = false; orderStore.createOrder();">
+          Зрозуміло, замовити
+        </button>
+        <button class="btn" style="background: rgba(71, 85, 105, 0.3); color: #cbd5e1; border: 1px solid #475569; padding: 10px;" @click="orderStore.showAIWarning = false;">
+          Скасувати
+        </button>
+      </div>
+
+      <div v-else style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
         <button class="btn" style="background: #f97316; color: white; font-weight: bold; padding: 12px;" @click="orderStore.useSafeRoute = true; orderStore.showAIWarning = false; orderStore.createOrder();">
           Активувати безпечний маршрут (Рекомендовано)
         </button>

@@ -6,12 +6,7 @@ namespace TaxiSystem.Api.Services;
 public record GeocodedAddress(string Label, double Lat, double Lng);
 
 /// <summary>
-/// Клієнт до Geocoding API OpenRouteService (Pelias): переклад адрес у
-/// координати (пошук вулиці для автопідказок) і координат в адреси
-/// (зворотне геокодування при кліку на мапі) — заміна ручного вводу
-/// "lat, lng" на людський текст адреси.
-/// На відміну від Directions API, тут ключ передається як query-параметр
-/// api_key, а не в заголовку Authorization.
+/// Клієнт Geocoding API OpenRouteService: пошук адрес для автопідказок і зворотне геокодування (ключ у query-параметрі api_key).
 /// </summary>
 public class OpenRouteServiceGeocodingClient
 {
@@ -46,12 +41,6 @@ public class OpenRouteServiceGeocodingClient
     {
         if (string.IsNullOrWhiteSpace(_apiKey) || string.IsNullOrWhiteSpace(query)) return new List<GeocodedAddress>();
 
-        // focus.point (а не boundary.circle!) — це лише РАНЖУВАННЯ, не жорсткий
-        // фільтр: адреси біля Львова піднімаються вище у видачі, але пошук
-        // лишається світовим (потрібно, щоб можна було шукати вулиці будь-де —
-        // напр. в Києві — для перевірки реальної погоди в інших містах).
-        // boundary.circle раніше повністю відкидав усе поза колом — це й
-        // заважало б знайти щось за межами Львівської області.
         var url = $"{BaseUrl}/autocomplete?api_key={_apiKey}&text={Uri.EscapeDataString(query)}" +
                   $"&focus.point.lat={nearLat.ToString(CultureInfo.InvariantCulture)}" +
                   $"&focus.point.lon={nearLng.ToString(CultureInfo.InvariantCulture)}" +
@@ -83,8 +72,7 @@ public class OpenRouteServiceGeocodingClient
         }
         catch (Exception ex)
         {
-            // Ліміт вичерпано/ORS недоступний/мережева помилка — повертаємо порожній
-            // список, клієнт сам впаде на ручний ввід координат.
+            // Квота вичерпана/сервіс недоступний — повертаємо порожній список.
             _logger.LogWarning(ex, "OpenRouteService Geocoding недоступний.");
         }
 

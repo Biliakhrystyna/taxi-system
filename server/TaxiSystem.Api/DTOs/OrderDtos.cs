@@ -8,9 +8,6 @@ public record CreateOrderRequest(
     string PaymentMethod,
     bool IsBadWeather,
     bool SafeRouteApplied,
-    // Координати можуть бути відсутні, якщо пасажир увів адресу вручну
-    // текстом, не вибравши з автопідказок і не клікнувши на мапі — тоді
-    // тариф рахується за розумним дефолтом дистанції (див. OrdersController).
     double? PickupLat = null,
     double? PickupLng = null,
     double? DestinationLat = null,
