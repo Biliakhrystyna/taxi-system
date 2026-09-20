@@ -13,7 +13,7 @@
       <button v-if="authStore.authState === 'main_app'" class="btn logout-btn" @click="authStore.logout">🚪 Вийти з акаунту</button>
     </header>
 
-    <p v-if="authStore.authState === 'role_selection'" class="dev-credit">Розробник: Біляк Христина (Група ОІ-32)</p>
+    <p v-if="authStore.authState === 'role_selection'" class="dev-credit">Розробник: Біляк Христина</p>
 
     <RoleSelector v-if="authStore.authState === 'role_selection'" />
 
