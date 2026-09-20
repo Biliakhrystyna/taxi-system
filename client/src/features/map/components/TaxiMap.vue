@@ -291,5 +291,5 @@ watch(
 <style scoped>
 .map-wrapper { position: relative; width: 100%; height: 350px; margin-top: 15px; border-radius: 8px; overflow: hidden; border: 2px solid #334155; }
 .leaflet-map-container { width: 100%; height: 100%; z-index: 1; }
-.map-hint { position: absolute; top: 10px; right: 10px; background: rgba(15, 23, 42, 0.85); padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #e2e8f0; z-index: 1000; border: 1px solid #475569; }
+.map-hint { position: absolute; top: 10px; right: 10px; background: var(--yellow); padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; color: var(--black); z-index: 1000; border: 1px solid var(--black); }
 </style>
