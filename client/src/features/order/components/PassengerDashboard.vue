@@ -112,7 +112,7 @@
         <button class="btn success-btn w-full" :disabled="!orderStore.pickupLocation || !orderStore.destinationLocation" @click="submitOrder">
           Сформувати замовлення
         </button>
-        <p v-if="!orderStore.pickupLocation || !orderStore.destinationLocation" class="text-center mt-2 text-xs text-muted">
+        <p v-if="!orderStore.pickupLocation || !orderStore.destinationLocation" class="text-center mt-2 text-xs text-black">
           * Будь ласка, оберіть Точки А та В на мапі нижче, щоб розрахувати маршрут.
         </p>
       </div>
