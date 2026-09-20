@@ -46,19 +46,19 @@
 </template>
 
 <script setup lang="ts">
-import { useAuthStore } from './stores/authStore';
-import { useOrderStore } from './stores/orderStore';
-import { useUiStore } from './stores/uiStore';
-import RoleSelector from './components/auth/RoleSelector.vue';
-import AuthForm from './components/auth/AuthForm.vue';
-import ForgotPassword from './components/auth/ForgotPassword.vue';
-import EmailVerification from './components/auth/EmailVerification.vue';
-import DriverVerification from './components/auth/DriverVerification.vue';
-import WeatherWarningModal from './components/common/WeatherWarningModal.vue';
-import TripRatingModal from './components/common/TripRatingModal.vue';
-import PassengerDashboard from './components/passenger/PassengerDashboard.vue';
-import DriverDashboard from './components/driver/DriverDashboard.vue';
-import TripHistoryTable from './components/history/TripHistoryTable.vue';
+import { useAuthStore } from './features/auth/store/authStore';
+import { useOrderStore } from './features/order/store/orderStore';
+import { useUiStore } from './shared/uiStore';
+import RoleSelector from './features/auth/components/RoleSelector.vue';
+import AuthForm from './features/auth/components/AuthForm.vue';
+import ForgotPassword from './features/auth/components/ForgotPassword.vue';
+import EmailVerification from './features/auth/components/EmailVerification.vue';
+import DriverVerification from './features/auth/components/DriverVerification.vue';
+import WeatherWarningModal from './features/order/components/WeatherWarningModal.vue';
+import TripRatingModal from './features/order/components/TripRatingModal.vue';
+import PassengerDashboard from './features/order/components/PassengerDashboard.vue';
+import DriverDashboard from './features/order/components/DriverDashboard.vue';
+import TripHistoryTable from './features/order/components/TripHistoryTable.vue';
 
 const authStore = useAuthStore();
 authStore.restoreSession();
