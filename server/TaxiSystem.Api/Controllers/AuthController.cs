@@ -43,11 +43,10 @@ public class AuthController : ControllerBase
                 return Conflict("Користувач з таким email вже зареєстрований.");
             }
 
-            var alreadyHasRole = request.Role == "driver" ? existing.IsDriver : existing.IsPassenger;
+            var alreadyHasRole = request.Role == UserRoles.Driver ? existing.IsDriver : existing.IsPassenger;
             if (alreadyHasRole)
             {
-                var roleLabel = request.Role == "driver" ? "водія" : "пасажира";
-                return Conflict($"У цього акаунту вже є роль {roleLabel}.");
+                return Conflict($"У цього акаунту вже є роль {UserRoles.Label(request.Role)}.");
             }
 
             if (await HasActiveOrderInOtherRoleAsync(existing.Email, request.Role))
@@ -56,7 +55,7 @@ public class AuthController : ControllerBase
             }
 
             string? existingNormalizedLicense = null;
-            if (request.Role == "driver")
+            if (request.Role == UserRoles.Driver)
             {
                 var licenseCheck = await ValidateDriverLicenseAsync(request.LicenseNumber, request.Email);
                 if (licenseCheck.Error is not null) return licenseCheck.Error;
@@ -82,7 +81,7 @@ public class AuthController : ControllerBase
         }
 
         string? normalizedLicense = null;
-        if (request.Role == "driver")
+        if (request.Role == UserRoles.Driver)
         {
             var licenseCheck = await ValidateDriverLicenseAsync(request.LicenseNumber, request.Email);
             if (licenseCheck.Error is not null) return licenseCheck.Error;
@@ -98,14 +97,14 @@ public class AuthController : ControllerBase
             FirstName = request.FirstName,
             LastName = request.LastName,
             Phone = normalizedPhone,
-            IsPassenger = request.Role == "passenger",
-            IsDriver = request.Role == "driver",
-            Status = request.Role == "driver" ? "pending_verification" : "active",
+            IsPassenger = request.Role == UserRoles.Passenger,
+            IsDriver = request.Role == UserRoles.Driver,
+            Status = request.Role == UserRoles.Driver ? "pending_verification" : "active",
             EmailConfirmed = false,
             VerificationCode = code,
             VerificationCodeExpiresAt = DateTime.UtcNow.Add(CodeLifetime),
             LicenseNumber = normalizedLicense,
-            DriverCarClass = request.Role == "driver" ? request.DriverCarClass : null,
+            DriverCarClass = request.Role == UserRoles.Driver ? request.DriverCarClass : null,
         };
 
         _db.Users.Add(user);
@@ -140,11 +139,10 @@ public class AuthController : ControllerBase
         }
 
         // Один email може мати обидві ролі — перевіряємо, що потрібна роль увімкнена.
-        var hasRole = request.Role == "driver" ? user.IsDriver : user.IsPassenger;
+        var hasRole = request.Role == UserRoles.Driver ? user.IsDriver : user.IsPassenger;
         if (!hasRole)
         {
-            var roleLabel = request.Role == "driver" ? "водія" : "пасажира";
-            return Unauthorized($"Ця пошта ще не зареєстрована як {roleLabel}.");
+            return Unauthorized($"Ця пошта ще не зареєстрована як {UserRoles.Label(request.Role)}.");
         }
 
         if (!user.EmailConfirmed)
@@ -180,16 +178,10 @@ public class AuthController : ControllerBase
 
     /// <summary>Не пускає в іншу роль, поки в протилежній є незавершений рейс.</summary>
     private Task<bool> HasActiveOrderInOtherRoleAsync(string email, string requestedRole) =>
-        requestedRole == "driver"
-            ? _db.Orders.AnyAsync(o => o.PassengerEmail == email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled")
-            : _db.Orders.AnyAsync(o => o.DriverEmail == email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
+        ActiveTripGuard.HasActiveTripAsync(_db, email, UserRoles.Opposite(requestedRole));
 
-    private static string ActiveOrderConflictMessage(string requestedRole)
-    {
-        var otherRoleLabel = requestedRole == "driver" ? "пасажира" : "водія";
-        var requestedRoleLabel = requestedRole == "driver" ? "водія" : "пасажира";
-        return $"У вас є активна поїздка в ролі {otherRoleLabel} — завершіть її, перш ніж заходити як {requestedRoleLabel}.";
-    }
+    private static string ActiveOrderConflictMessage(string requestedRole) =>
+        $"У вас є активна поїздка в ролі {UserRoles.Label(UserRoles.Opposite(requestedRole))} — завершіть її, перш ніж заходити як {UserRoles.Label(requestedRole)}.";
 
     /// <summary>Одноразове підтвердження пошти кодом з листа.</summary>
     [HttpPost("verify-email")]
@@ -288,17 +280,17 @@ public class AuthController : ControllerBase
         user.Status = "active";
         await _db.SaveChangesAsync();
 
-        return Ok(await ToResponseAsync(user, "driver"));
+        return Ok(await ToResponseAsync(user, UserRoles.Driver));
     }
 
    
     private async Task<UserResponse> ToResponseAsync(User u, string? role = null)
     {
-        var effectiveRole = role ?? (u.IsDriver ? "driver" : "passenger");
+        var effectiveRole = role ?? (u.IsDriver ? UserRoles.Driver : UserRoles.Passenger);
 
-        var totalTrips = effectiveRole == "driver"
-            ? await _db.Orders.CountAsync(o => o.DriverEmail == u.Email && o.CurrentStatus == "completed")
-            : await _db.Orders.CountAsync(o => o.PassengerEmail == u.Email && o.CurrentStatus == "completed");
+        var totalTrips = effectiveRole == UserRoles.Driver
+            ? await _db.Orders.CountAsync(o => o.DriverEmail == u.Email && o.CurrentStatus == OrderStatus.Completed)
+            : await _db.Orders.CountAsync(o => o.PassengerEmail == u.Email && o.CurrentStatus == OrderStatus.Completed);
 
         return new UserResponse(
             u.Email, u.FirstName, u.LastName, u.Phone, effectiveRole,

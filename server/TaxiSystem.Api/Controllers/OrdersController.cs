@@ -65,9 +65,7 @@ public class OrdersController : ControllerBase
         var passenger = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.PassengerEmail);
         if (passenger is null) return BadRequest("Пасажира не знайдено.");
 
-        var isDrivingNow = await _db.Orders.AnyAsync(o =>
-            o.DriverEmail == passenger.Email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
-        if (isDrivingNow)
+        if (await ActiveTripGuard.HasActiveTripAsync(_db, passenger.Email, UserRoles.Driver))
         {
             return Conflict("У вас є активна поїздка в ролі водія — завершіть її, перш ніж замовляти як пасажир.");
         }
@@ -94,7 +92,7 @@ public class OrdersController : ControllerBase
             DestinationLng = request.DestinationLng,
             EstimatedCost = estimatedCost,
             WeatherHazardLevel = request.IsBadWeather ? "HIGH" : "NORMAL",
-            CurrentStatus = "waiting",
+            CurrentStatus = OrderStatus.Waiting,
             SafeRouteApplied = request.SafeRouteApplied,
             PaymentMethod = paymentMethodLabel,
             PaymentStatus = initialPaymentStatus,
@@ -113,11 +111,12 @@ public class OrdersController : ControllerBase
     [HttpGet("current")]
     public async Task<ActionResult<OrderResponse?>> GetCurrent([FromQuery] string email, [FromQuery] string role)
     {
-        if (role == "driver")
+        if (role == UserRoles.Driver)
         {
             // Власний активний рейс водія має пріоритет.
             var ownOrder = await _db.Orders
-                .Where(o => o.DriverEmail == email && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled")
+                .Active()
+                .Where(o => o.DriverEmail == email)
                 .OrderByDescending(o => o.CreatedAt)
                 .FirstOrDefaultAsync();
 
@@ -126,7 +125,7 @@ public class OrdersController : ControllerBase
             // Інакше — найстаріше (FIFO) замовлення, що очікує водія, лише його класу авто.
             var driver = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
 
-            var waitingQuery = _db.Orders.Where(o => o.CurrentStatus == "waiting");
+            var waitingQuery = _db.Orders.Where(o => o.CurrentStatus == OrderStatus.Waiting);
             if (driver?.DriverCarClass is not null)
             {
                 waitingQuery = waitingQuery.Where(o => o.CarClass == driver.DriverCarClass);
@@ -137,7 +136,8 @@ public class OrdersController : ControllerBase
         }
 
         var passengerOrder = await _db.Orders
-            .Where(o => o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled" && o.PassengerEmail == email)
+            .Active()
+            .Where(o => o.PassengerEmail == email)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -147,9 +147,9 @@ public class OrdersController : ControllerBase
     [HttpGet("history")]
     public async Task<ActionResult<List<OrderResponse>>> GetHistory([FromQuery] string email, [FromQuery] string role)
     {
-        var query = _db.Orders.Where(o => o.CurrentStatus == "completed" || o.CurrentStatus == "cancelled");
+        var query = _db.Orders.Finished();
 
-        query = role == "driver"
+        query = role == UserRoles.Driver
             ? query.Where(o => o.DriverEmail == email)
             : query.Where(o => o.PassengerEmail == email);
 
@@ -170,8 +170,7 @@ public class OrdersController : ControllerBase
             return Conflict("Не можна прийняти власне замовлення.");
         }
 
-        var isRidingNow = await _db.Orders.AnyAsync(o =>
-            o.PassengerEmail == driverEmail && o.CurrentStatus != "completed" && o.CurrentStatus != "cancelled");
+        var isRidingNow = await ActiveTripGuard.HasActiveTripAsync(_db, driverEmail, UserRoles.Passenger);
 
         return isRidingNow
             ? Conflict("У вас є активна поїздка в ролі пасажира — завершіть її, перш ніж приймати замовлення.")
@@ -181,7 +180,7 @@ public class OrdersController : ControllerBase
     [HttpPost("{orderId}/status")]
     public async Task<ActionResult<OrderResponse>> UpdateStatus(string orderId, UpdateOrderStatusRequest request)
     {
-        if (request.NewStatus == "accepted")
+        if (request.NewStatus == OrderStatus.Accepted)
         {
             var conflict = await CheckDriverCanAcceptAsync(orderId, request.DriverEmail);
             if (conflict is not null) return conflict;
@@ -211,7 +210,7 @@ public class OrdersController : ControllerBase
 
         order.CurrentStatus = request.NewStatus;
 
-        if (request.NewStatus == "completed")
+        if (request.NewStatus == OrderStatus.Completed)
         {
             order.EndTime = DateTime.Now.ToLongTimeString();
             order.PaymentStatus = order.PaymentMethod == "Готівка" ? "Оплачено готівкою (водію)" : "Оплачено карткою";
@@ -242,7 +241,7 @@ public class OrdersController : ControllerBase
             return Unauthorized("Оцінити поїздку може лише пасажир, який нею скористався.");
         }
 
-        if (order.CurrentStatus != "completed")
+        if (order.CurrentStatus != OrderStatus.Completed)
         {
             return BadRequest("Оцінити можна лише завершену поїздку.");
         }
