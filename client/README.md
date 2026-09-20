@@ -1,38 +1,30 @@
-# taxi-prototype
+# Taxi System: клієнт
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 + TypeScript + Pinia + Vite, мапа на Leaflet. Працює разом із сервером з `../server` (див. головний [README](../README.md)).
 
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## Команди
 
 ```sh
-npm install
+npm install     # встановити залежності
+npm run dev     # запуск для розробки (http://localhost:5173)
+npm run build   # збірка для продакшену
 ```
 
-### Compile and Hot-Reload for Development
+Адреса сервера задається змінною `VITE_API_BASE_URL` у `.env.local` (за замовчуванням `http://localhost:5080`).
 
-```sh
-npm run dev
+## Структура `src/`
+
+```
+features/
+  auth/    вхід, реєстрація, верифікація водія
+  order/   замовлення, кабінети пасажира й водія, історія, погода
+  map/     мапа, автопідказки адрес, побудова маршрутів
+shared/    спільне: http-клієнт, config, повідомлення (uiStore), типи
+assets/    стилі (app.css підключає файли з styles/)
 ```
 
-### Compile and Minify for Production
+У кожній фічі: `components/` (екрани), `store/` (стан Pinia), файли `*Api.ts` (запити до сервера).
 
-```sh
-npm run build
-```
+## Рекомендоване середовище
+
+[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (Vetur вимкнути).
