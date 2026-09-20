@@ -9,6 +9,12 @@ export class ApiError extends Error {
   }
 }
 
+const CONNECTION_ERROR = "Сталася помилка з'єднання з сервером.";
+
+/** Текст відповіді сервера для ApiError, інакше повідомлення про втрату зв'язку. */
+export const errorMessage = (err: unknown, fallback: string = CONNECTION_ERROR): string =>
+  err instanceof ApiError ? err.message : fallback;
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

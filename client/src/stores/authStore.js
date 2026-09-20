@@ -4,7 +4,8 @@ import { useOrderStore } from './orderStore';
 import { useUiStore } from './uiStore';
 import { useTabGuard } from './auth/useTabGuard';
 import { authApi } from '../services/authApi';
-import { ApiError } from '../services/http';
+import { ApiError, errorMessage } from '../services/http';
+import { normalizeLicense, phoneDigitsOf, validateSignUp } from '../utils/authValidation';
 
 // Автентифікація, роль та реєстраційні дані користувача — через REST
 // до ASP.NET Core (AuthController).
@@ -80,37 +81,27 @@ export const useAuthStore = defineStore('auth', () => {
     if (!identifierInput.value || !passwordInput.value) return;
 
     if (isSignUp.value) {
-      if (passwordInput.value.length < 8) {
-        uiStore.triggerError('Некоректний ввід: пароль має містити щонайменше 8 символів.');
+      const validationError = validateSignUp({
+        email: identifierInput.value,
+        password: passwordInput.value,
+        phone: phoneInput.value,
+        role: userRole.value,
+        license: licenseInput.value,
+      });
+
+      if (validationError) {
+        uiStore.triggerError(validationError);
         return;
       }
 
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifierInput.value)) {
-        uiStore.triggerError('Некоректний ввід: введіть справжню електронну пошту.');
-        return;
-      }
-
-    
-      const phoneDigits = phoneInput.value.replace(/\D/g, '');
-      if (!/^[3-9]\d{8}$/.test(phoneDigits)) {
-        uiStore.triggerError('Некоректний ввід: номер телефону має бути 9 цифр після +380 (не починається з 0-2).');
-        return;
-      }
-
-      // Українське пластикове посвідчення водія: 3 літери + 6 цифр
       if (userRole.value === 'driver') {
-        const licenseNormalized = licenseInput.value.replace(/\s/g, '').toUpperCase();
-        if (!/^[A-ZА-ЯҐЄІЇ]{3}\d{6}$/.test(licenseNormalized)) {
-          uiStore.triggerError('Некоректний ввід: номер посвідчення водія має бути 3 літери + 6 цифр (напр. ВХХ123456).');
-          return;
-        }
-        licenseInput.value = licenseNormalized;
+        licenseInput.value = normalizeLicense(licenseInput.value);
       }
     }
 
     try {
       if (isSignUp.value) {
-        const phoneDigits = phoneInput.value.replace(/\D/g, '');
+        const phoneDigits = phoneDigitsOf(phoneInput.value);
         const user = await authApi.register({
           email: identifierInput.value,
           password: passwordInput.value,
@@ -199,7 +190,7 @@ export const useAuthStore = defineStore('auth', () => {
         orderStore.subscribeToUserData(user.email, user.role);
       }
     } catch (err) {
-      uiStore.triggerError(err instanceof ApiError ? err.message : "Сталася помилка з'єднання з сервером.");
+      uiStore.triggerError(errorMessage(err));
     }
   };
 
@@ -211,7 +202,7 @@ export const useAuthStore = defineStore('auth', () => {
       await authApi.resendVerification(currentUser.value.email);
       uiStore.triggerSuccess('Новий код надіслано на вашу пошту.');
     } catch (err) {
-      uiStore.triggerError(err instanceof ApiError ? err.message : "Сталася помилка з'єднання з сервером.");
+      uiStore.triggerError(errorMessage(err));
     }
   };
 
@@ -225,7 +216,7 @@ export const useAuthStore = defineStore('auth', () => {
       uiStore.triggerSuccess('Якщо такий email зареєстровано — код надіслано на пошту.');
       forgotPasswordStep.value = 'reset';
     } catch (err) {
-      uiStore.triggerError(err instanceof ApiError ? err.message : "Сталася помилка з'єднання з сервером.");
+      uiStore.triggerError(errorMessage(err));
     }
   };
 
@@ -254,7 +245,7 @@ export const useAuthStore = defineStore('auth', () => {
       isSignUp.value = false;
       authState.value = 'auth_form';
     } catch (err) {
-      uiStore.triggerError(err instanceof ApiError ? err.message : "Сталася помилка з'єднання з сервером.");
+      uiStore.triggerError(errorMessage(err));
     }
   };
 
