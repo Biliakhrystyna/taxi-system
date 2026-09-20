@@ -1,0 +1,64 @@
+.auth-card {
+  margin-top: 90px;
+}
+
+.auth-card.login-card {
+  margin-top: 20px;
+}
+
+.auth-card, .screen-card {
+  background: var(--yellow); 
+  color: var(--black);      
+  padding: 25px;
+  border-radius: 12px;
+  border: 3px solid var(--black); 
+  box-shadow: 0 15px 25px rgba(0, 0, 0, 0.6);
+}
+.auth-card h2, .screen-card h2 {
+  margin-top: 0;
+  font-size: 22px;
+  color: var(--black) !important; 
+  border-bottom: 2px solid var(--black); 
+  padding-bottom: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.passenger-box h2, .driver-box h2, .auth-card h2 { color: var(--black) !important; }
+
+.subtitle { color: var(--black); font-size: 14px; margin-bottom: 25px; font-weight: 600; }
+.back-link { background: none; border: none; color: var(--black); font-weight: bold; cursor: pointer; font-size: 13px; margin-bottom: 15px; display: block; }
+.back-link:hover { text-decoration: underline; }
+
+/*кнопки вибору ролей*/
+.btn-group-row { display: flex; gap: 20px; justify-content: center; }
+.passenger-btn-big {
+  background: var(--white);
+  color: var(--black);
+  padding: 20px;
+  font-size: 18px;
+  border-radius: 8px;
+  width: 180px;
+  font-weight: bold;
+  border: 2px solid var(--black);
+  transition: 0.2s;
+}
+.passenger-btn-big:hover { background: var(--slate-200); transform: translateY(-2px); }
+
+.driver-btn-big {
+  background: var(--black);
+  color: var(--yellow);
+  padding: 20px;
+  font-size: 18px;
+  border-radius: 8px;
+  width: 180px;
+  font-weight: bold;
+  border: 2px solid var(--black);
+  transition: 0.2s;
+}
+.driver-btn-big:hover { background: var(--slate-800); transform: translateY(-2px); }
+
+.toggle-auth-text { font-size: 13px; color: var(--black); font-weight: 700; margin-top: 15px; text-align: center; }
+.toggle-auth-text span { color: var(--black); cursor: pointer; text-decoration: underline; }
+.auth-form a { color: var(--black) !important; text-decoration: underline; }
