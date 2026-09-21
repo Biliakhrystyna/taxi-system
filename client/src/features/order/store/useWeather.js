@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue';
 import { weatherApi } from '../weatherApi';
 import { routingApi } from '../../map/routingApi';
-import { findHazardStretches, sampleRoute } from '../../map/geoFilter';
+import { analyzeRouteHazards } from '../../map/routeHazards';
 
 /** Погода: у точці відправлення, push з сервера та небезпечні ділянки вздовж маршруту А→Б. */
 export function useWeather({ currentOrder, points, showAIWarning, useSafeRoute }) {
@@ -42,14 +42,11 @@ export function useWeather({ currentOrder, points, showAIWarning, useSafeRoute }
 
     try {
       const route = await routingApi.getRoute(pickupCoords.value, destinationCoords.value);
-      if (!route || route.points.length < 2) return;
+      if (!route) return;
 
-      const samples = sampleRoute(route.points);
-      const forecasts = await weatherApi.getRouteForecast(samples.map((s) => s.point));
-      if (token !== routeHazardsToken) return;
-      if (forecasts.every((f) => f.source === 'unavailable')) return;
+      const stretches = await analyzeRouteHazards(route.points);
+      if (token !== routeHazardsToken || !stretches) return;
 
-      const stretches = findHazardStretches(route.points, samples, forecasts);
       routeHazards.value = stretches;
       isBadWeather.value = stretches.length > 0;
       weatherReason.value = [...new Set(stretches.flatMap((st) => st.reason.split(', ')))].join(', ');
