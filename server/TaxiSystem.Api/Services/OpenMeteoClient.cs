@@ -10,6 +10,9 @@ public record WeatherForecast(string HazardLevel, double PrecipitationMm, string
 /// </summary>
 public class OpenMeteoClient
 {
+    /// <summary>Модель прогнозу: ICON-EU точніша для Європи. Поза її покриттям Open-Meteo відповідає помилкою, тоді запит повторюється з моделлю за замовчуванням.</summary>
+    private const string PreferredModel = "icon_eu";
+
     private const double HazardThresholdMm = 0.1;
 
     /// <summary>Температура, нижче якої на дорозі можливий іній/ожеледиця навіть без опадів.</summary>
@@ -59,16 +62,12 @@ public class OpenMeteoClient
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var lats = string.Join(",", points.Select(p => p.Lat.ToString(inv)));
         var lngs = string.Join(",", points.Select(p => p.Lng.ToString(inv)));
-        var url = $"https://api.open-meteo.com/v1/forecast?latitude={lats}&longitude={lngs}" +
-                  "&current=precipitation,temperature_2m,weather_code,snow_depth&minutely_15=precipitation&forecast_days=1&timezone=auto";
 
         try
         {
-            using var response = await _http.GetAsync(url, ct);
-            response.EnsureSuccessStatusCode();
-
-            await using var stream = await response.Content.ReadAsStreamAsync(ct);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            using var doc = await FetchAsync(BuildUrl(lats, lngs, PreferredModel), ct)
+                            ?? await FetchAsync(BuildUrl(lats, lngs, null), ct);
+            if (doc is null) return Unavailable(points.Count);
 
             // Для однієї точки Open-Meteo повертає об'єкт, для кількох — масив об'єктів.
             var locations = doc.RootElement.ValueKind == JsonValueKind.Array
@@ -85,6 +84,23 @@ public class OpenMeteoClient
             // повертаємо безпечний дефолт з позначеним джерелом.
             return Unavailable(points.Count);
         }
+    }
+
+    private static string BuildUrl(string lats, string lngs, string? model)
+    {
+        var modelParam = model is null ? "" : $"&models={model}";
+        return $"https://api.open-meteo.com/v1/forecast?latitude={lats}&longitude={lngs}{modelParam}" +
+               "&current=precipitation,temperature_2m,weather_code,snow_depth&minutely_15=precipitation&forecast_days=1&timezone=auto";
+    }
+
+    /// <summary>Відповідь Open-Meteo або null, якщо сервіс повернув помилку (наприклад, модель не покриває точку).</summary>
+    private async Task<JsonDocument?> FetchAsync(string url, CancellationToken ct)
+    {
+        using var response = await _http.GetAsync(url, ct);
+        if (!response.IsSuccessStatusCode) return null;
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        return await JsonDocument.ParseAsync(stream, cancellationToken: ct);
     }
 
     private static IReadOnlyList<WeatherForecast> Unavailable(int count) =>
