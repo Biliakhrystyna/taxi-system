@@ -1,6 +1,7 @@
 <template>
   <div class="map-wrapper">
     <div id="map" class="leaflet-map-container"></div>
+    <div v-if="routeUnavailable" class="map-warning">⚠️ Маршрут по дорогах для цих точок не знайдено</div>
     <div class="map-hint">
       💡 <span v-if="role === 'passenger'">Введіть адресу вище або клікніть на мапі: 1-й клік — Точка А, 2-й клік — Точка В</span>
       <span v-else>Маршрут поточного замовлення</span>
@@ -9,12 +10,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import '../leafletIcons';
 import { useOrderStore } from '../../order/store/orderStore';
-import type { LatLng } from '../../../shared/types/geo';
-import { buildDirectRoute } from '../routeBuilder';
+import type { HazardStretch, LatLng } from '../../../shared/types/geo';
+import { analyzeRouteHazards } from '../routeHazards';
 import { routingApi } from '../routingApi';
 import { geocodingApi } from '../geocodingApi';
 import { LVIV_CENTER } from '../../../shared/config';
@@ -31,15 +33,25 @@ let markerA: L.Marker | null = null;
 let markerB: L.Marker | null = null;
 let routeLine: L.Polyline | null = null;
 let hazardLayer: L.LayerGroup | null = null;
+let driverHazards: HazardStretch[] = [];
+let hazardToken = 0;
+let shownOrderId: string | null = null;
+
+const routeUnavailable = ref(false);
 
 // Небезпечні ділянки стандартного маршруту (результат геопросторової
 // фільтрації в orderStore.loadRouteHazards) — червоні відрізки поверх лінії.
 const drawHazards = () => {
   hazardLayer?.clearLayers();
-  if (!map || !hazardLayer || props.role !== 'passenger') return;
-  if (orderStore.useSafeRoute && orderStore.isBadWeather) return;
+  if (!map || !hazardLayer) return;
 
-  for (const stretch of orderStore.routeHazards) {
+  const isPassenger = props.role === 'passenger';
+  const safeRouteShown = isPassenger
+    ? orderStore.useSafeRoute && orderStore.isBadWeather
+    : orderStore.currentOrder?.safe_route_applied;
+  if (safeRouteShown) return;
+
+  for (const stretch of isPassenger ? orderStore.routeHazards : driverHazards) {
     L.polyline(stretch.points, { color: '#ef4444', weight: 7, opacity: 0.9, pane: 'hazard' })
       .bindTooltip(`⚠️ Небезпечна ділянка: ${stretch.reason}`, { sticky: true })
       .addTo(hazardLayer);
@@ -48,7 +60,17 @@ const drawHazards = () => {
 
 
 let routeDrawToken = 0;
-const invalidatePendingRoute = () => { routeDrawToken++; };
+const invalidatePendingRoute = () => {
+  routeDrawToken++;
+  routeUnavailable.value = false;
+};
+
+const markRouteUnavailable = () => {
+  routeUnavailable.value = true;
+  if (markerB && props.role === 'passenger') {
+    markerB.setPopupContent('🏁 Точка В<br><b style="color: #ef4444;">Маршрут по дорогах не знайдено</b>').openPopup();
+  }
+};
 
 
 const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
@@ -60,7 +82,7 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
     // Реальний маршрут по дорогах з мінімумом поворотів (OpenRouteServiceClient
     // на бекенді). 
     let points: LatLng[] = [];
-    let popupLabel = '🛡️ Безпечний маршрут недоступний (ORS) — показано пряму лінію';
+    let popupLabel = '';
 
     try {
       const safeRoute = await routingApi.getSafeRoute(a, b);
@@ -72,13 +94,13 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
      
     }
 
+    if (!map || myToken !== routeDrawToken) return;
     if (points.length === 0) {
-      points = buildDirectRoute(a, b);
+      markRouteUnavailable();
+      return;
     }
 
-
-    if (!map || myToken !== routeDrawToken) return;
-
+    routeUnavailable.value = false;
     routeLine = L.polyline(points, {
       color: '#f97316',
       weight: 5,
@@ -92,7 +114,7 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
   } else {
  
     let points: LatLng[] = [];
-    let popupLabel = '✨ Стандартний шлях (пряма лінія — ORS недоступний)';
+    let popupLabel = '';
 
     try {
       const route = await routingApi.getRoute(a, b);
@@ -104,11 +126,13 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
       
     }
 
+    if (!map || myToken !== routeDrawToken) return;
     if (points.length === 0) {
-      points = buildDirectRoute(a, b);
+      markRouteUnavailable();
+      return;
     }
 
-    if (!map || myToken !== routeDrawToken) return; 
+    routeUnavailable.value = false;
     routeLine = L.polyline(points, {
       color: '#38bdf8',
       weight: 4,
@@ -176,6 +200,8 @@ onMounted(() => {
   if (props.role === 'passenger') {
     if (orderStore.pickupCoords) placePickupPoint(orderStore.pickupCoords);
     if (orderStore.destinationCoords) placeDestinationPoint(orderStore.destinationCoords);
+  } else {
+    showOrderForDriver(orderStore.currentOrder);
   }
 
   if (props.role === 'passenger') {
@@ -236,32 +262,61 @@ watch(
   },
 );
 
+const loadDriverHazards = async (a: LatLng, b: LatLng) => {
+  const token = ++hazardToken;
+  try {
+    const route = await routingApi.getRoute(a, b);
+    if (!route) return;
+
+    const stretches = await analyzeRouteHazards(route.points);
+    if (token !== hazardToken || !stretches) return;
+
+    driverHazards = stretches;
+    drawHazards();
+  } catch {
+    // Без прогнозу вздовж маршруту небезпечні ділянки не підсвічуються.
+  }
+};
+
+// Мапа водія: маршрут поточного замовлення з небезпечними ділянками, карта переходить на нього.
+const showOrderForDriver = (order: any) => {
+  if (!map) return;
+
+  invalidatePendingRoute();
+  hazardToken++;
+  driverHazards = [];
+  drawHazards();
+  if (markerA) { map.removeLayer(markerA); markerA = null; }
+  if (markerB) { map.removeLayer(markerB); markerB = null; }
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+
+  const hasCoords = order && order.order_id
+    && order.pickup_lat != null && order.pickup_lng != null
+    && order.destination_lat != null && order.destination_lng != null;
+  if (!hasCoords) {
+    shownOrderId = null;
+    return;
+  }
+
+  const coordsA: LatLng = { lat: order.pickup_lat, lng: order.pickup_lng };
+  const coordsB: LatLng = { lat: order.destination_lat, lng: order.destination_lng };
+
+  markerA = L.marker([coordsA.lat, coordsA.lng]).addTo(map).bindPopup('📍 Пасажир тут');
+  markerB = L.marker([coordsB.lat, coordsB.lng]).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
+
+  if (shownOrderId !== order.order_id) {
+    map.fitBounds(L.latLngBounds([coordsA, coordsB]), { padding: [40, 40], maxZoom: 15 });
+    shownOrderId = order.order_id;
+  }
+
+  drawRoute(coordsA, coordsB, order.safe_route_applied);
+  loadDriverHazards(coordsA, coordsB);
+};
+
 watch(
   () => orderStore.currentOrder,
   (newOrder) => {
-    if (!map || props.role === 'passenger') return;
-
-
-    invalidatePendingRoute();
-    if (markerA) { map.removeLayer(markerA); markerA = null; }
-    if (markerB) { map.removeLayer(markerB); markerB = null; }
-    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-
-    if (
-      newOrder && newOrder.order_id &&
-      newOrder.pickup_lat !== null && newOrder.pickup_lat !== undefined &&
-      newOrder.pickup_lng !== null && newOrder.pickup_lng !== undefined &&
-      newOrder.destination_lat !== null && newOrder.destination_lat !== undefined &&
-      newOrder.destination_lng !== null && newOrder.destination_lng !== undefined
-    ) {
-      const coordsA: LatLng = { lat: newOrder.pickup_lat, lng: newOrder.pickup_lng };
-      const coordsB: LatLng = { lat: newOrder.destination_lat, lng: newOrder.destination_lng };
-
-      markerA = L.marker([coordsA.lat, coordsA.lng]).addTo(map).bindPopup('📍 Пасажир тут');
-      markerB = L.marker([coordsB.lat, coordsB.lng]).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
-
-      drawRoute(coordsA, coordsB, newOrder.safe_route_applied);
-    }
+    if (props.role !== 'passenger') showOrderForDriver(newOrder);
   },
   { deep: true },
 );
@@ -291,5 +346,6 @@ watch(
 <style scoped>
 .map-wrapper { position: relative; width: 100%; height: 350px; margin-top: 15px; border-radius: 8px; overflow: hidden; border: 2px solid #334155; }
 .leaflet-map-container { width: 100%; height: 100%; z-index: 1; }
+.map-warning { position: absolute; bottom: 10px; left: 10px; background: var(--red); color: var(--white); padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; z-index: 1000; border: 1px solid var(--black); }
 .map-hint { position: absolute; top: 10px; right: 10px; background: rgba(15, 23, 42, 0.85); padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #e2e8f0; z-index: 1000; border: 1px solid #475569; }
 </style>
