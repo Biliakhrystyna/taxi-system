@@ -73,10 +73,6 @@ const markRouteUnavailable = () => {
 };
 
 
-// showSafeRoute — це вже остаточне рішення "малювати помаранчевий безпечний
-// маршрут", а не сирий прапорець useSafeRoute/safe_route_applied: виклик
-// сам вирішує (з урахуванням живої погоди для пасажира чи фіксованого
-// рішення замовлення для водія), тут це більше не переоцінюється.
 const drawRoute = async (a: LatLng, b: LatLng, showSafeRoute: boolean): Promise<LatLng[] | null> => {
   if (!map) return null;
   const myToken = ++routeDrawToken;
@@ -268,10 +264,6 @@ watch(
   },
 );
 
-// Приймає точки маршруту, які вже отримав drawRoute — окремого запиту
-// маршруту тут більше немає (раніше дублював запит drawRoute, і якщо
-// саме цей другий запит не встигав/зривався, водій лишався без червоних
-// ділянок, хоча синя лінія вже намалювалась).
 const loadDriverHazards = async (routePoints: LatLng[]) => {
   const token = ++hazardToken;
   try {
@@ -293,14 +285,6 @@ const showOrderForDriver = (order: any) => {
     && order.pickup_lat != null && order.pickup_lng != null
     && order.destination_lat != null && order.destination_lng != null;
 
-  // currentOrder — це deep-watch: SignalR і REST-відповідь на "Прийняти"
-  // штовхають те саме замовлення повторно (лише зі зміненим статусом), і
-  // раніше кожен такий тик знімав обидва маркери й малював їх наново —
-  // асинхронний drawRoute/loadDriverHazards одного виклику скасовував
-  // інший (routeDrawToken/hazardToken), і на екрані інколи лишалась лише
-  // точка А або взагалі жоден маркер до завершення останнього запиту.
-  // Те саме замовлення (order_id не змінився) — мапу не чіпаємо, лише
-  // статус/дані водія в UI оновлюються самим Pinia-стором.
   if (hasCoords && shownOrderId === order.order_id) return;
 
   invalidatePendingRoute();
@@ -326,8 +310,6 @@ const showOrderForDriver = (order: any) => {
   shownOrderId = order.order_id;
 
   drawRoute(coordsA, coordsB, !!order.safe_route_applied).then((points) => {
-    // Якщо замовлення вже їде безпечним маршрутом, ділянки й так в обхід
-    // небезпеки — підсвічувати нема чого (те саме правило, що й у drawHazards).
     if (points && points.length > 1 && !order.safe_route_applied) {
       loadDriverHazards(points);
     }
