@@ -73,14 +73,18 @@ const markRouteUnavailable = () => {
 };
 
 
-const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
-  if (!map) return;
+// showSafeRoute — це вже остаточне рішення "малювати помаранчевий безпечний
+// маршрут", а не сирий прапорець useSafeRoute/safe_route_applied: виклик
+// сам вирішує (з урахуванням живої погоди для пасажира чи фіксованого
+// рішення замовлення для водія), тут це більше не переоцінюється.
+const drawRoute = async (a: LatLng, b: LatLng, showSafeRoute: boolean): Promise<LatLng[] | null> => {
+  if (!map) return null;
   const myToken = ++routeDrawToken;
   if (routeLine) map.removeLayer(routeLine);
 
-  if (isSafeApplied && orderStore.isBadWeather) {
+  if (showSafeRoute) {
     // Реальний маршрут по дорогах з мінімумом поворотів (OpenRouteServiceClient
-    // на бекенді). 
+    // на бекенді).
     let points: LatLng[] = [];
     let popupLabel = '';
 
@@ -91,13 +95,13 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
         popupLabel = `🛡️ Безпечний маршрут (ORS): ${safeRoute.turn_count} поворотів`;
       }
     } catch {
-     
+
     }
 
-    if (!map || myToken !== routeDrawToken) return;
+    if (!map || myToken !== routeDrawToken) return null;
     if (points.length === 0) {
       markRouteUnavailable();
-      return;
+      return null;
     }
 
     routeUnavailable.value = false;
@@ -111,8 +115,9 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
     if (markerB && props.role === 'passenger') {
       markerB.setPopupContent(`🏁 Точка В<br><b style="color: #f97316;">${popupLabel}</b>`).openPopup();
     }
+    return points;
   } else {
- 
+
     let points: LatLng[] = [];
     let popupLabel = '';
 
@@ -123,13 +128,13 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
         popupLabel = '✨ Стандартний найкоротший шлях (по дорогах)';
       }
     } catch {
-      
+
     }
 
-    if (!map || myToken !== routeDrawToken) return;
+    if (!map || myToken !== routeDrawToken) return null;
     if (points.length === 0) {
       markRouteUnavailable();
-      return;
+      return null;
     }
 
     routeUnavailable.value = false;
@@ -142,6 +147,7 @@ const drawRoute = async (a: LatLng, b: LatLng, isSafeApplied: boolean) => {
     if (markerB && props.role === 'passenger') {
       markerB.setPopupContent(`🏁 Точка В<br><b style="color: #38bdf8;">${popupLabel}</b>`).openPopup();
     }
+    return points;
   }
 };
 
@@ -165,9 +171,9 @@ const placePickupPoint = async (coords: LatLng) => {
   // щоб можна було демонструвати реальні опади, обравши будь-яку адресу.
   orderStore.fetchWeatherHazard(coords.lat, coords.lng);
 
- 
+
   if (markerB) {
-    drawRoute(coords, markerB.getLatLng(), orderStore.useSafeRoute);
+    drawRoute(coords, markerB.getLatLng(), orderStore.useSafeRoute && orderStore.isBadWeather);
   }
 };
 
@@ -186,7 +192,7 @@ const placeDestinationPoint = async (coords: LatLng) => {
     }
   }
 
-  drawRoute(markerA.getLatLng(), coords, orderStore.useSafeRoute);
+  drawRoute(markerA.getLatLng(), coords, orderStore.useSafeRoute && orderStore.isBadWeather);
 };
 
 onMounted(() => {
@@ -262,13 +268,14 @@ watch(
   },
 );
 
-const loadDriverHazards = async (a: LatLng, b: LatLng) => {
+// Приймає точки маршруту, які вже отримав drawRoute — окремого запиту
+// маршруту тут більше немає (раніше дублював запит drawRoute, і якщо
+// саме цей другий запит не встигав/зривався, водій лишався без червоних
+// ділянок, хоча синя лінія вже намалювалась).
+const loadDriverHazards = async (routePoints: LatLng[]) => {
   const token = ++hazardToken;
   try {
-    const route = await routingApi.getRoute(a, b);
-    if (!route) return;
-
-    const stretches = await analyzeRouteHazards(route.points);
+    const stretches = await analyzeRouteHazards(routePoints);
     if (token !== hazardToken || !stretches) return;
 
     driverHazards = stretches;
@@ -309,8 +316,13 @@ const showOrderForDriver = (order: any) => {
     shownOrderId = order.order_id;
   }
 
-  drawRoute(coordsA, coordsB, order.safe_route_applied);
-  loadDriverHazards(coordsA, coordsB);
+  drawRoute(coordsA, coordsB, !!order.safe_route_applied).then((points) => {
+    // Якщо замовлення вже їде безпечним маршрутом, ділянки й так в обхід
+    // небезпеки — підсвічувати нема чого (те саме правило, що й у drawHazards).
+    if (points && points.length > 1 && !order.safe_route_applied) {
+      loadDriverHazards(points);
+    }
+  });
 };
 
 watch(
@@ -327,7 +339,7 @@ watch(
   () => orderStore.useSafeRoute,
   () => {
     if (props.role === 'passenger' && markerA && markerB) {
-      drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute);
+      drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute && orderStore.isBadWeather);
     }
   },
 );
@@ -336,7 +348,7 @@ watch(
   () => orderStore.isBadWeather,
   () => {
     if (props.role === 'passenger' && markerA && markerB) {
-      drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute);
+      drawRoute(markerA.getLatLng(), markerB.getLatLng(), orderStore.useSafeRoute && orderStore.isBadWeather);
     }
   },
 );
