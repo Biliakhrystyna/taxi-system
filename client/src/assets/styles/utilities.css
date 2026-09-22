@@ -11,3 +11,9 @@
 .text-black { color: var(--black); }
 .flex-1 { flex: 1; }
 .row-center { display: flex; align-items: center; gap: 8px; }
+
+/* Вузькі телефони: менше повітря по краях, щоб картки не впиралися у відступи. */
+@media (max-width: 420px) {
+  body { padding: 12px 10px 16px; }
+  .auth-card, .screen-card { padding: 16px; }
+}

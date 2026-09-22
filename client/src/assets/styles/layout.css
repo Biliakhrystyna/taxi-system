@@ -3,14 +3,15 @@ body {
 
   background-image: linear-gradient(rgba(11, 15, 25, 0.40), rgba(11, 15, 25, 0.55)), url('../taxi_background.jpg');
 
-  background-size: cover;          
-  background-position: right center; 
-  background-attachment: fixed;    
+  background-size: cover;
+  background-position: right center;
+  background-attachment: fixed;
   background-repeat: no-repeat;
 
-  color: #f8fafc; 
+  color: #f8fafc;
   margin: 0;
   padding: 16px 20px 20px;
+  overflow-x: hidden;
 }
 
 .app-container {
