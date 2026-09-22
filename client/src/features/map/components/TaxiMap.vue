@@ -289,6 +289,20 @@ const loadDriverHazards = async (routePoints: LatLng[]) => {
 const showOrderForDriver = (order: any) => {
   if (!map) return;
 
+  const hasCoords = order && order.order_id
+    && order.pickup_lat != null && order.pickup_lng != null
+    && order.destination_lat != null && order.destination_lng != null;
+
+  // currentOrder — це deep-watch: SignalR і REST-відповідь на "Прийняти"
+  // штовхають те саме замовлення повторно (лише зі зміненим статусом), і
+  // раніше кожен такий тик знімав обидва маркери й малював їх наново —
+  // асинхронний drawRoute/loadDriverHazards одного виклику скасовував
+  // інший (routeDrawToken/hazardToken), і на екрані інколи лишалась лише
+  // точка А або взагалі жоден маркер до завершення останнього запиту.
+  // Те саме замовлення (order_id не змінився) — мапу не чіпаємо, лише
+  // статус/дані водія в UI оновлюються самим Pinia-стором.
+  if (hasCoords && shownOrderId === order.order_id) return;
+
   invalidatePendingRoute();
   hazardToken++;
   driverHazards = [];
@@ -297,9 +311,6 @@ const showOrderForDriver = (order: any) => {
   if (markerB) { map.removeLayer(markerB); markerB = null; }
   if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
 
-  const hasCoords = order && order.order_id
-    && order.pickup_lat != null && order.pickup_lng != null
-    && order.destination_lat != null && order.destination_lng != null;
   if (!hasCoords) {
     shownOrderId = null;
     return;
@@ -311,10 +322,8 @@ const showOrderForDriver = (order: any) => {
   markerA = L.marker([coordsA.lat, coordsA.lng]).addTo(map).bindPopup('📍 Пасажир тут');
   markerB = L.marker([coordsB.lat, coordsB.lng]).addTo(map).bindPopup('🏁 Кінцева точка рейсу');
 
-  if (shownOrderId !== order.order_id) {
-    map.fitBounds(L.latLngBounds([coordsA, coordsB]), { padding: [40, 40], maxZoom: 15 });
-    shownOrderId = order.order_id;
-  }
+  map.fitBounds(L.latLngBounds([coordsA, coordsB]), { padding: [40, 40], maxZoom: 15 });
+  shownOrderId = order.order_id;
 
   drawRoute(coordsA, coordsB, !!order.safe_route_applied).then((points) => {
     // Якщо замовлення вже їде безпечним маршрутом, ділянки й так в обхід
