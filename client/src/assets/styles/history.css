@@ -1,6 +1,7 @@
 /* Таблиця історій поїздок*/
 .history-box { margin-top: 25px; }
-.history-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.history-table { width: 100%; min-width: 560px; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
 .history-table th { background: var(--black); padding: 12px; text-align: left; color: var(--yellow); border-bottom: 2px solid var(--black); font-weight: bold; }
 .history-table td { padding: 12px; border-bottom: 1px solid var(--black); color: var(--black); font-weight: 600; }
 .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }

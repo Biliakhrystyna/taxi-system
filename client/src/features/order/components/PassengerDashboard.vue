@@ -1,9 +1,9 @@
 <template>
   <div class="screen-card passenger-box">
     <h2>📱 Панель пасажира (Створення замовлення)</h2>
-    <div class="weather-status" style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+    <div class="weather-status" style="background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
       <span style="font-size: 13px; font-weight: 700; color: #000000;">{{ orderStore.destinationCoords ? 'Погода на маршруті:' : 'Поточна погода:' }}</span>
-      <span v-if="orderStore.isBadWeather" style="font-size: 12px; font-weight: 800; color: #ffffff; background: #dc2626; border: 1px solid #000000; padding: 4px 10px; border-radius: 6px; text-align: right;">
+      <span v-if="orderStore.isBadWeather" style="font-size: 12px; font-weight: 800; color: #ffffff; background: #dc2626; border: 1px solid #000000; padding: 4px 10px; border-radius: 6px; text-align: right; max-width: 100%;">
         ⚠️ Небезпечно{{ orderStore.weatherReason ? ': ' + orderStore.weatherReason : '' }}
       </span>
       <span v-else style="font-size: 12px; font-weight: 800; color: #ffffff; background: #16a34a; border: 1px solid #000000; padding: 4px 10px; border-radius: 6px;">☀️ Без небезпеки, дорога суха</span>
